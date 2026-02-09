@@ -1,0 +1,26 @@
+{
+  "name": "office-avatar-studio",
+  "version": "1.0.0",
+  "description": "Avatar studio for Clippy, Pushy, and Tacky.",
+  "scripts": {
+    "dev": "vite",
+    "serve": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check:syntax": "node --check js/studio.js && node --check js/config/avatars.js && node --check js/avatars/clippy-controller.js && node --check js/avatars/thumbtack-controller.js && node --check js/lib/utils.js && node --check js/lib/clippy-3d.js && node --check js/lib/thumbtack-factory.js && node --check js/lib/clippy-3d-plugin-examples.js",
+    "lint": "eslint .",
+    "check": "npm run check:syntax && npm run lint && npm run build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "three": "^0.182.0"
+  },
+  "devDependencies": {
+    "eslint": "^10.0.0",
+    "globals": "^17.3.0",
+    "vite": "^7.3.1"
+  }
+}

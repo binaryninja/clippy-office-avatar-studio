@@ -1,5 +1,5 @@
-import * as THREE from "https://esm.sh/three@0.162.0";
-import { OrbitControls } from "https://esm.sh/three@0.162.0/examples/jsm/controls/OrbitControls.js";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
   AVATAR_DEFINITIONS,
   AVATAR_ORDER,
@@ -183,6 +183,10 @@ function formatFieldValue(field, value) {
   return value.toFixed(decimals);
 }
 
+function formatSelectValue(value) {
+  return value === NO_PROP_VALUE ? "(none)" : String(value ?? "");
+}
+
 function resolveOptions(field, catalog) {
   if (!field.catalogKey) {
     return [...(field.options || [])];
@@ -363,7 +367,7 @@ function syncControlsFromState() {
 
     if (field.type === "select" || field.type === "color") {
       input.value = String(value);
-      valueEl.textContent = field.type === "select" ? String(value) : "";
+      valueEl.textContent = field.type === "select" ? formatSelectValue(value) : "";
     } else {
       input.value = String(value);
       valueEl.textContent = formatFieldValue(field, value);

@@ -1,10 +1,12 @@
-# Office Avatar Studio (Public Release)
+# Office Avatar Studio
 
-Public-ready starter for a combined avatar studio featuring:
+Bundled Three.js avatar studio featuring:
 
 - Clippy
 - Pushy
 - Tacky
+
+![Avatar Studio preview](./assets/studio-screenshot.png)
 
 ## What is included
 
@@ -17,26 +19,41 @@ Public-ready starter for a combined avatar studio featuring:
 - `js/lib/clippy-3d.js`: base Clippy model engine
 - `js/lib/clippy-3d-plugin-examples.js`: optional Clippy office props plugin
 - `js/lib/thumbtack-factory.js`: shared Pushy/Tacky mesh factory
+- `.github/workflows/ci.yml`: CI checks for pull requests and pushes
 
 ## Run locally
 
-From this folder:
-
 ```bash
-python3 -m http.server 4173
+npm install
+npm run dev -- --host 127.0.0.1 --port 4173
 ```
 
-Open [http://localhost:4173](http://localhost:4173).
+Open [http://127.0.0.1:4173](http://127.0.0.1:4173).
 
-## Publish as a new GitHub repo
-
-From this folder (`release/`):
+## Build and preview
 
 ```bash
-git init
-git add .
-git commit -m "Initial public release: Clippy, Pushy, Tacky avatar studio"
-gh repo create clippy-office-avatar-studio --public --source=. --remote=origin --push
+npm run build
+npm run preview
 ```
 
-Change the repo name in the last command if you want a different slug.
+## Checks
+
+```bash
+npm run check
+```
+
+This runs syntax validation, ESLint, and production bundle build.
+
+## Deploy
+
+This is a static site after build.
+
+1. Run `npm run build`.
+2. Deploy the `dist/` directory.
+
+Common host settings:
+
+- Netlify: Build command `npm run build`, Publish directory `dist`
+- Vercel: Build command `npm run build`, Output directory `dist`
+- Cloudflare Pages: Build command `npm run build`, Build output directory `dist`
