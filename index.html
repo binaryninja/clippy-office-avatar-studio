@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Office Avatar Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./css/studio.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <section class="stage" aria-label="Avatar studio viewport">
+        <canvas id="studioCanvas" aria-label="Avatar preview canvas"></canvas>
+        <div class="scan" aria-hidden="true"></div>
+        <div class="hud">
+          <p class="eyebrow">Office Avatar Kit</p>
+          <h1>Avatar Studio</h1>
+          <p class="sub">Switch between Clippy, Pushy, and Tacky. Tune settings and export JSON presets.</p>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-header">
+          <div class="avatar-switcher">
+            <label for="avatarSelect">Avatar</label>
+            <select id="avatarSelect" aria-label="Select avatar model"></select>
+          </div>
+          <span id="status" class="status" aria-live="polite"></span>
+        </div>
+
+        <div class="panel-scroll">
+          <section class="control-group utilities">
+            <h3 class="group-title">Presets</h3>
+            <div class="btn-grid">
+              <button type="button" id="btnReset">Reset</button>
+              <button type="button" id="btnRandom">Randomize</button>
+            </div>
+            <div class="btn-grid">
+              <button type="button" id="btnCopy">Copy JSON</button>
+              <button type="button" id="btnApply">Apply JSON</button>
+            </div>
+          </section>
+
+          <div id="controlSections"></div>
+
+          <section class="control-group json-output">
+            <h3 class="group-title">Preset JSON</h3>
+            <textarea id="presetJson" spellcheck="false" aria-label="Avatar preset JSON"></textarea>
+          </section>
+        </div>
+      </aside>
+    </div>
+
+    <script type="module" src="./js/studio.js"></script>
+  </body>
+</html>
