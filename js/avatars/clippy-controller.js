@@ -274,6 +274,7 @@ export function createClippyController({ THREE, scene, initialState }) {
   setState(state, { force: true });
 
   return {
+    group: clippy.group,
     setState,
     update,
     dispose,

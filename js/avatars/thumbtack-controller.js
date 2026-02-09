@@ -198,6 +198,7 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
   setState(state, { force: true });
 
   return {
+    group: avatar.group,
     setState,
     update,
     dispose,
