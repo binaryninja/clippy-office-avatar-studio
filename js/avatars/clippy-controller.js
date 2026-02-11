@@ -1,10 +1,18 @@
 import { officePackPlugin } from "../lib/clippy-3d-plugin-examples.js";
 import { createClippy3D } from "../lib/clippy-3d.js";
-import { clamp } from "../lib/utils.js";
+import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
 const FALLBACK_MODES = ["idle", "wave", "celebrate", "spin", "point"];
 const EXPRESSION_CHOICES = ["neutral", "happy", "focused", "surprised"];
+const CLIPPY_EYE_RADIUS = 0.22;
+const CLIPPY_PUPIL_RADIUS = 0.11;
+const CLIPPY_PUPIL_SURFACE_SETTINGS = Object.freeze({
+  edgeClamp: 0.64,
+  centerProtrusion: 0.1,
+  edgeInset: 0.16,
+  edgeInsetPower: 2.2,
+});
 
 function expressionProfile(expression) {
   let mouthScaleY = 1;
@@ -157,10 +165,6 @@ export function createClippyController({ THREE, scene, initialState }) {
     clippy.leftPupil.position.y = base.leftPupilY + lookY;
     clippy.rightPupil.position.y = base.rightPupilY + lookY;
 
-    const dynamicPupilDepth = 0.21 * state.eyeScale;
-    clippy.leftPupil.position.z = dynamicPupilDepth;
-    clippy.rightPupil.position.z = dynamicPupilDepth;
-
     clippy.leftEye.scale.x = state.eyeScale;
     clippy.rightEye.scale.x = state.eyeScale;
     clippy.leftEye.scale.z = state.eyeScale;
@@ -180,6 +184,17 @@ export function createClippyController({ THREE, scene, initialState }) {
     const pupilYFactor = state.pupilScale;
     clippy.leftPupil.scale.y *= pupilYFactor;
     clippy.rightPupil.scale.y *= pupilYFactor;
+
+    constrainPupilToEyeSurface(clippy.leftEye, clippy.leftPupil, {
+      eyeRadius: CLIPPY_EYE_RADIUS,
+      pupilRadius: CLIPPY_PUPIL_RADIUS,
+      ...CLIPPY_PUPIL_SURFACE_SETTINGS,
+    });
+    constrainPupilToEyeSurface(clippy.rightEye, clippy.rightPupil, {
+      eyeRadius: CLIPPY_EYE_RADIUS,
+      pupilRadius: CLIPPY_PUPIL_RADIUS,
+      ...CLIPPY_PUPIL_SURFACE_SETTINGS,
+    });
 
     clippy.leftBrow.position.y = 0.29 + expr.browDrop + state.browLift;
     clippy.rightBrow.position.y = 0.29 + expr.browDrop + state.browLift;

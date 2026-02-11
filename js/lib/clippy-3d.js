@@ -1,3 +1,5 @@
+import { constrainPupilToEyeSurface } from "./utils.js";
+
 const DEFAULTS = {
   scale: 1,
   metalColor: 0xe7edf6,
@@ -18,6 +20,14 @@ const MODE_DEFAULT_EXPRESSIONS = {
 
 const GLOBAL_ANIMATIONS = Object.create(null);
 const GLOBAL_PROPS = Object.create(null);
+const CLIPPY_EYE_RADIUS = 0.22;
+const CLIPPY_PUPIL_RADIUS = 0.11;
+const CLIPPY_PUPIL_SURFACE_SETTINGS = Object.freeze({
+  edgeClamp: 0.64,
+  centerProtrusion: 0.1,
+  edgeInset: 0.16,
+  edgeInsetPower: 2.2,
+});
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -237,7 +247,6 @@ class Clippy3D {
     this.browThickness = clamp(Number.isFinite(parsedBrowThickness) ? parsedBrowThickness : 1, 0.35, 3.2);
     this.eyeScale = clamp(Number.isFinite(parsedEyeScale) ? parsedEyeScale : 2, 0.65, 4.5);
     this.eyeSpacing = clamp(Number.isFinite(parsedEyeSpacing) ? parsedEyeSpacing : 0.5, 0.24, 1.25);
-    this.pupilDepth = 0.21 * this.eyeScale;
 
     this._buildMesh();
     this.group.scale.setScalar(this.options.scale);
@@ -320,8 +329,8 @@ class Clippy3D {
     this.head.position.set(-0.28, 1.72, 0.5);
     this.group.add(this.head);
 
-    const eyeGeom = new THREE.SphereGeometry(0.22, 24, 18);
-    const pupilGeom = new THREE.SphereGeometry(0.11, 16, 14);
+    const eyeGeom = new THREE.SphereGeometry(CLIPPY_EYE_RADIUS, 24, 18);
+    const pupilGeom = new THREE.SphereGeometry(CLIPPY_PUPIL_RADIUS, 28, 24);
     const browGeom = new THREE.TorusGeometry(
       this.baseBrowRadius,
       this.baseBrowTubeRadius * this.browThickness,
@@ -341,12 +350,15 @@ class Clippy3D {
     this.rightEye.castShadow = true;
 
     this.leftPupil = new THREE.Mesh(pupilGeom, darkMat);
-    this.leftPupil.position.set(-this.eyeSpacing, this.basePupilY, this.pupilDepth);
+    this.leftPupil.position.set(-this.eyeSpacing, this.basePupilY, 0);
     this.leftPupil.scale.setScalar(this.eyeScale);
 
     this.rightPupil = new THREE.Mesh(pupilGeom, darkMat);
-    this.rightPupil.position.set(this.eyeSpacing, this.basePupilY, this.pupilDepth);
+    this.rightPupil.position.set(this.eyeSpacing, this.basePupilY, 0);
     this.rightPupil.scale.setScalar(this.eyeScale);
+
+    this._positionPupilOnEye(this.leftEye, this.leftPupil);
+    this._positionPupilOnEye(this.rightEye, this.rightPupil);
 
     this.leftBrow = new THREE.Mesh(browGeom, darkMat);
     this.leftBrow.position.set(-0.38, 0.29, 0.23);
@@ -573,6 +585,14 @@ class Clippy3D {
     this.rightBrow.position.y = 0.29 + browDrop;
   }
 
+  _positionPupilOnEye(eye, pupil) {
+    constrainPupilToEyeSurface(eye, pupil, {
+      eyeRadius: CLIPPY_EYE_RADIUS,
+      pupilRadius: CLIPPY_PUPIL_RADIUS,
+      ...CLIPPY_PUPIL_SURFACE_SETTINGS,
+    });
+  }
+
   _applyLook() {
     const localTarget = this.head.worldToLocal(this._tmpLook.copy(this.lookTarget));
 
@@ -583,6 +603,9 @@ class Clippy3D {
     this.rightPupil.position.x = this.eyeSpacing + lookX;
     this.leftPupil.position.y = this.basePupilY + lookY;
     this.rightPupil.position.y = this.basePupilY + lookY;
+
+    this._positionPupilOnEye(this.leftEye, this.leftPupil);
+    this._positionPupilOnEye(this.rightEye, this.rightPupil);
   }
 
   _updateBlink(dt) {
@@ -604,6 +627,9 @@ class Clippy3D {
     const pupilScaleY = this.eyeScale * (1 - blink * 0.85);
     this.leftPupil.scale.y = pupilScaleY;
     this.rightPupil.scale.y = pupilScaleY;
+
+    this._positionPupilOnEye(this.leftEye, this.leftPupil);
+    this._positionPupilOnEye(this.rightEye, this.rightPupil);
   }
 
   _resetPose() {
