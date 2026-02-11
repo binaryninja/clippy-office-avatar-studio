@@ -36,23 +36,23 @@ orbit.minDistance = 5.5;
 orbit.maxDistance = 18;
 
 const lights = {
-  hemi: new THREE.HemisphereLight(0xfff8ea, 0xb78857, 1.08),
-  ambient: new THREE.AmbientLight(0xfff6e9, 0.44),
-  key: new THREE.DirectionalLight(0xfff0d9, 1.5),
-  fill: new THREE.DirectionalLight(0xfff7eb, 0.74),
-  rim: new THREE.PointLight(0x0f766e, 0.82, 20, 2),
+  hemi: new THREE.HemisphereLight(0x6de8ff, 0x0c0718, 1.1),
+  ambient: new THREE.AmbientLight(0x2b4d66, 0.52),
+  key: new THREE.DirectionalLight(0xa7f6ff, 1.38),
+  fill: new THREE.DirectionalLight(0xff6689, 0.78),
+  rim: new THREE.PointLight(0x00e7ff, 1.16, 22, 2),
 };
-lights.key.position.set(3.2, 5.6, 4.1);
+lights.key.position.set(3.2, 5.8, 4.6);
 lights.key.castShadow = true;
 lights.key.shadow.mapSize.set(1024, 1024);
-lights.fill.position.set(-3.2, 2.2, 5);
-lights.rim.position.set(-4.8, 1.1, -3.4);
+lights.fill.position.set(-4.4, 2.4, 4.8);
+lights.rim.position.set(-5.1, 1.4, -3.2);
 scene.add(lights.hemi, lights.ambient, lights.key, lights.fill, lights.rim);
 
 const CAROUSEL_SCENE = {
-  fogColor: 0xe9deca,
-  fogNear: 13,
-  fogFar: 34,
+  fogColor: 0x0a1325,
+  fogNear: 12,
+  fogFar: 33,
   camera: [0.28, 0.44, 14.2],
   orbitTarget: [0, -0.7, 0],
   minDistance: 7.2,
@@ -71,9 +71,9 @@ function createStageRig() {
   const base = new THREE.Mesh(
     new THREE.CylinderGeometry(7.6, 8.4, 0.68, 120),
     new THREE.MeshStandardMaterial({
-      color: 0xd7b489,
-      metalness: 0.2,
-      roughness: 0.74,
+      color: 0x111b30,
+      metalness: 0.52,
+      roughness: 0.34,
     }),
   );
   base.position.y = -3.3;
@@ -82,9 +82,9 @@ function createStageRig() {
   const topDeck = new THREE.Mesh(
     new THREE.CylinderGeometry(6.5, 7.1, 0.16, 100),
     new THREE.MeshStandardMaterial({
-      color: 0xe7c596,
-      metalness: 0.1,
-      roughness: 0.86,
+      color: 0x1d2a46,
+      metalness: 0.44,
+      roughness: 0.28,
     }),
   );
   topDeck.position.y = -2.88;
@@ -93,11 +93,11 @@ function createStageRig() {
   const outerRing = new THREE.Mesh(
     new THREE.TorusGeometry(7.22, 0.1, 16, 220),
     new THREE.MeshStandardMaterial({
-      color: 0x0f766e,
-      emissive: 0x0f766e,
-      emissiveIntensity: 0.2,
-      metalness: 0.66,
-      roughness: 0.37,
+      color: 0x00e7ff,
+      emissive: 0x00e7ff,
+      emissiveIntensity: 0.52,
+      metalness: 0.82,
+      roughness: 0.2,
     }),
   );
   outerRing.rotation.x = Math.PI / 2;
@@ -106,11 +106,11 @@ function createStageRig() {
   const centerPlate = new THREE.Mesh(
     new THREE.CylinderGeometry(1.45, 1.86, 0.08, 52),
     new THREE.MeshStandardMaterial({
-      color: 0xead7bf,
-      metalness: 0.3,
-      roughness: 0.4,
-      emissive: 0x0f766e,
-      emissiveIntensity: 0.05,
+      color: 0x19233e,
+      metalness: 0.66,
+      roughness: 0.2,
+      emissive: 0xff4d78,
+      emissiveIntensity: 0.14,
     }),
   );
   centerPlate.position.y = -2.74;

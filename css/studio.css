@@ -1,15 +1,19 @@
 :root {
-  --bg-0: #f2ebde;
-  --bg-1: #e3d2bf;
-  --ink: #1f1a16;
-  --muted: #5f5449;
-  --line: rgba(31, 26, 22, 0.2);
-  --panel: rgba(255, 251, 245, 0.9);
-  --panel-strong: rgba(255, 248, 238, 0.98);
-  --accent: #0f766e;
-  --accent-2: #ca6702;
-  --shadow-soft: 0 18px 42px rgba(40, 24, 8, 0.17);
-  --shadow-strong: 0 22px 56px rgba(40, 24, 8, 0.22);
+  --bg-0: #040711;
+  --bg-1: #071327;
+  --bg-2: #181024;
+  --ink: #e8f8ff;
+  --muted: #82a5b8;
+  --line: rgba(0, 231, 255, 0.28);
+  --line-soft: rgba(0, 231, 255, 0.14);
+  --panel: rgba(4, 16, 31, 0.74);
+  --panel-strong: rgba(8, 23, 46, 0.9);
+  --surface: rgba(8, 24, 44, 0.78);
+  --accent: #00e7ff;
+  --accent-2: #ff4d78;
+  --accent-3: #f7ee6d;
+  --shadow-soft: 0 18px 40px rgba(0, 6, 14, 0.55);
+  --shadow-strong: 0 24px 64px rgba(0, 6, 14, 0.65);
 }
 
 * {
@@ -22,18 +26,53 @@ body {
 }
 
 body {
+  position: relative;
   margin: 0;
   color: var(--ink);
-  font-family: "Space Grotesk", "Avenir Next", "Trebuchet MS", sans-serif;
+  font-family: "Rajdhani", "Trebuchet MS", sans-serif;
   background:
-    radial-gradient(1000px 700px at 5% -8%, rgba(15, 118, 110, 0.18), transparent 54%),
-    radial-gradient(900px 580px at 105% 112%, rgba(202, 103, 2, 0.2), transparent 56%),
-    linear-gradient(154deg, var(--bg-1), var(--bg-0));
+    radial-gradient(860px 640px at 8% 6%, rgba(0, 231, 255, 0.18), transparent 54%),
+    radial-gradient(760px 560px at 90% 88%, rgba(255, 77, 120, 0.18), transparent 58%),
+    linear-gradient(138deg, var(--bg-0), var(--bg-1) 52%, var(--bg-2));
+  overflow: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.42;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent 23px,
+      rgba(0, 231, 255, 0.06) 24px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 23px,
+      rgba(0, 231, 255, 0.06) 24px
+    );
+  animation: grid-drift 16s linear infinite;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(247, 238, 109, 0.08), transparent 68%);
+  filter: blur(70px);
 }
 
 .layout {
+  position: relative;
+  z-index: 1;
   display: grid;
-  grid-template-columns: minmax(380px, 1.45fr) minmax(320px, 460px);
+  grid-template-columns: minmax(380px, 1.42fr) minmax(320px, 460px);
   gap: 14px;
   height: 100%;
   padding: 14px;
@@ -45,10 +84,18 @@ body {
   border-radius: 24px;
   overflow: hidden;
   background:
-    radial-gradient(1200px 700px at 12% 10%, rgba(15, 118, 110, 0.2), transparent 58%),
-    radial-gradient(700px 450px at 82% 86%, rgba(202, 103, 2, 0.16), transparent 56%),
-    linear-gradient(170deg, rgba(241, 232, 214, 0.86), rgba(236, 225, 204, 0.82));
+    radial-gradient(1000px 640px at 12% 8%, rgba(0, 231, 255, 0.2), transparent 58%),
+    radial-gradient(680px 420px at 84% 84%, rgba(255, 77, 120, 0.2), transparent 56%),
+    linear-gradient(162deg, rgba(8, 23, 46, 0.86), rgba(4, 13, 27, 0.86));
   box-shadow: var(--shadow-strong);
+}
+
+.stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(120deg, rgba(0, 231, 255, 0.08), rgba(247, 238, 109, 0.06), transparent 70%);
 }
 
 #studioCanvas {
@@ -63,9 +110,15 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.24;
-  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.17) 1px, transparent 1px);
-  background-size: 100% 6px;
+  opacity: 0.26;
+  mix-blend-mode: screen;
+  background-image:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, transparent 0, rgba(0, 231, 255, 0.08) 60%, transparent 100%);
+  background-size:
+    100% 5px,
+    220px 100%;
+  animation: scan-flow 4.8s linear infinite;
 }
 
 .hud {
@@ -73,27 +126,33 @@ body {
   left: 14px;
   top: 14px;
   max-width: min(560px, calc(100% - 28px));
-  background: rgba(255, 250, 241, 0.78);
+  background: rgba(3, 16, 32, 0.72);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 10px 12px;
-  backdrop-filter: blur(8px);
-  animation: rise-in 280ms ease;
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 0 0 1px rgba(0, 231, 255, 0.08),
+    0 0 22px rgba(0, 231, 255, 0.17);
+  animation: rise-in 360ms ease both;
 }
 
 .eyebrow {
   margin: 0;
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  font-weight: 700;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--accent);
+  text-shadow: 0 0 12px rgba(0, 231, 255, 0.45);
 }
 
 .hud h1 {
-  margin: 2px 0 0;
-  font-size: 18px;
-  line-height: 1.1;
+  margin: 3px 0 0;
+  font-size: 22px;
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
 .sub {
@@ -104,14 +163,24 @@ body {
 }
 
 .panel {
+  position: relative;
   min-height: 0;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 24px;
   background: var(--panel);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
   box-shadow: var(--shadow-soft);
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(0, 231, 255, 0.09), transparent 42%, rgba(255, 77, 120, 0.08));
 }
 
 .panel-header {
@@ -120,7 +189,7 @@ body {
   justify-content: space-between;
   gap: 10px;
   padding: 12px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
   background: var(--panel-strong);
   border-radius: 24px 24px 0 0;
 }
@@ -133,17 +202,19 @@ body {
 
 .avatar-switcher label {
   font-size: 11px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .status {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--accent);
   text-align: right;
+  text-shadow: 0 0 12px rgba(0, 231, 255, 0.45);
+  animation: status-pulse 1.8s ease-in-out infinite;
 }
 
 .panel-scroll {
@@ -154,24 +225,54 @@ body {
   gap: 10px;
 }
 
+.panel-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.panel-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(0, 231, 255, 0.45), rgba(255, 77, 120, 0.45)) padding-box;
+}
+
 .control-group {
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-soft);
   border-radius: 14px;
-  background: rgba(255, 253, 249, 0.8);
-  padding: 9px 10px;
-  animation: rise-in 300ms ease;
+  background: var(--surface);
+  padding: 10px;
+  box-shadow: 0 0 0 1px rgba(0, 231, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  animation: rise-in 340ms ease both;
+}
+
+#controlSections .control-group:nth-child(2) {
+  animation-delay: 45ms;
+}
+
+#controlSections .control-group:nth-child(3) {
+  animation-delay: 90ms;
+}
+
+#controlSections .control-group:nth-child(4) {
+  animation-delay: 130ms;
+}
+
+#controlSections .control-group:nth-child(5) {
+  animation-delay: 170ms;
 }
 
 .group-title {
   margin: 0 0 8px;
   font-size: 12px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
+  font-weight: 700;
 }
 
 .utilities {
-  background: rgba(246, 238, 226, 0.86);
+  background:
+    linear-gradient(170deg, rgba(11, 34, 65, 0.92), rgba(5, 20, 39, 0.82)),
+    var(--surface);
 }
 
 .control {
@@ -192,14 +293,14 @@ body {
 }
 
 .control-label {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .control-value {
   font-size: 12px;
   color: var(--muted);
-  font-family: "IBM Plex Mono", Menlo, Consolas, monospace;
+  font-family: "Share Tech Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
 }
 
 select,
@@ -214,8 +315,8 @@ input[type="color"],
 textarea,
 button {
   border-radius: 10px;
-  border: 1px solid rgba(41, 31, 19, 0.2);
-  background: rgba(255, 254, 250, 0.95);
+  border: 1px solid var(--line-soft);
+  background: rgba(4, 18, 35, 0.9);
   color: var(--ink);
 }
 
@@ -228,6 +329,7 @@ button {
 
 select {
   width: 100%;
+  font-weight: 600;
 }
 
 input[type="range"] {
@@ -248,17 +350,37 @@ input[type="color"] {
 }
 
 button {
+  position: relative;
+  overflow: hidden;
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  background:
+    linear-gradient(145deg, rgba(0, 231, 255, 0.22), rgba(255, 77, 120, 0.24)),
+    rgba(5, 17, 32, 0.94);
+}
+
+button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  transform: translateX(-100%);
+  transition: transform 220ms ease;
 }
 
 button:hover {
   transform: translateY(-1px);
-  background: rgba(247, 239, 227, 0.98);
-  border-color: rgba(15, 118, 110, 0.45);
+  border-color: var(--line);
+  box-shadow: 0 0 15px rgba(0, 231, 255, 0.25);
+}
+
+button:hover::before {
+  transform: translateX(100%);
 }
 
 button:active {
@@ -267,6 +389,7 @@ button:active {
 
 .json-output {
   margin-bottom: 4px;
+  animation-delay: 210ms;
 }
 
 #presetJson {
@@ -274,16 +397,26 @@ button:active {
   min-height: 180px;
   resize: vertical;
   padding: 10px;
-  font-family: "IBM Plex Mono", Menlo, Consolas, monospace;
+  font-family: "Share Tech Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.35;
-  background: rgba(255, 254, 251, 0.95);
+  background: rgba(4, 17, 34, 0.95);
+  color: #baf4ff;
+}
+
+select:focus-visible,
+input:focus-visible,
+button:focus-visible,
+textarea:focus-visible {
+  outline: 1px solid var(--accent-3);
+  outline-offset: 1px;
+  border-color: var(--accent);
 }
 
 @keyframes rise-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -291,7 +424,43 @@ button:active {
   }
 }
 
+@keyframes scan-flow {
+  from {
+    background-position:
+      0 0,
+      -240px 0;
+  }
+  to {
+    background-position:
+      0 0,
+      240px 0;
+  }
+}
+
+@keyframes grid-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(24px, 24px, 0);
+  }
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 0.78;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 @media (max-width: 1080px) {
+  body {
+    overflow-y: auto;
+  }
+
   .layout {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(280px, 54vh) minmax(280px, 1fr);
@@ -321,6 +490,10 @@ button:active {
     left: 10px;
     top: 10px;
     padding: 8px 10px;
+  }
+
+  .hud h1 {
+    font-size: 19px;
   }
 
   .sub {
