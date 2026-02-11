@@ -53,6 +53,7 @@ const clippyFields = [
       { key: "browThickness", label: "Brow Thickness", type: "range", min: 0.35, max: 3.2, step: 0.01 },
       { key: "mouthWidth", label: "Mouth Width", type: "range", min: 0.55, max: 1.8, step: 0.01 },
       { key: "mouthHeight", label: "Mouth Height", type: "range", min: 0.35, max: 1.85, step: 0.01 },
+      { key: "mouthOffsetY", label: "Mouth Y", type: "range", min: -0.25, max: 0.2, step: 0.005 },
       { key: "armSpread", label: "Arm Spread", type: "range", min: 1.1, max: 2.9, step: 0.01 },
       { key: "armY", label: "Arm Height", type: "range", min: -2, max: 0, step: 0.01 },
     ],
@@ -166,6 +167,7 @@ export const AVATAR_DEFINITIONS = {
       browThickness: 1,
       mouthWidth: 1,
       mouthHeight: 1,
+      mouthOffsetY: -0.18,
       armSpread: 1.95,
       armY: -1.12,
 

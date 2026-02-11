@@ -6,20 +6,23 @@ import { NO_PROP_VALUE } from "../config/avatars.js";
 const FALLBACK_MODES = ["idle", "wave", "celebrate", "spin", "point"];
 const EXPRESSION_CHOICES = ["neutral", "happy", "focused", "surprised"];
 const SIL_VISEME = "sil";
+const LIP_COLOR = 0xb53b4e;
+const MOUTH_OFFSET_Z_FACTOR = -0.22;
+const MOUTH_SCALE_ANCHOR_Y = 0.07;
 
 const VISEME_POSES = Object.freeze({
-  sil: { open: 0.02, width: 1, round: 0.06, press: 0.42, jaw: 0 },
-  aa: { open: 0.94, width: 1.14, round: 0.1, press: 0.04, jaw: 0.58 },
-  ee: { open: 0.38, width: 1.44, round: -0.2, press: 0.06, jaw: 0.16 },
-  oh: { open: 0.8, width: 0.88, round: 0.88, press: 0.08, jaw: 0.38 },
-  ou: { open: 0.56, width: 0.76, round: 1, press: 0.12, jaw: 0.22 },
-  fv: { open: 0.2, width: 1.04, round: 0.04, press: 0.34, jaw: 0.06 },
-  mbp: { open: 0.01, width: 1.01, round: 0.04, press: 1, jaw: 0 },
-  th: { open: 0.43, width: 1.1, round: 0.12, press: 0.18, jaw: 0.2 },
-  ch: { open: 0.5, width: 1.02, round: 0.22, press: 0.16, jaw: 0.24 },
-  tn: { open: 0.3, width: 1.12, round: 0.06, press: 0.22, jaw: 0.14 },
-  ss: { open: 0.18, width: 1.31, round: -0.08, press: 0.18, jaw: 0.08 },
-  kk: { open: 0.34, width: 1.03, round: 0.08, press: 0.24, jaw: 0.16 },
+  sil: { open: 0, width: 1, round: 0, press: 1, jaw: 0 },
+  aa: { open: 0.82, width: 1.11, round: 0.08, press: 0.05, jaw: 0.52 },
+  ee: { open: 0.32, width: 1.3, round: -0.14, press: 0.08, jaw: 0.12 },
+  oh: { open: 0.66, width: 0.9, round: 0.72, press: 0.09, jaw: 0.32 },
+  ou: { open: 0.48, width: 0.8, round: 0.84, press: 0.12, jaw: 0.2 },
+  fv: { open: 0.16, width: 1.02, round: 0.02, press: 0.45, jaw: 0.04 },
+  mbp: { open: 0, width: 1, round: 0, press: 1, jaw: 0 },
+  th: { open: 0.36, width: 1.08, round: 0.1, press: 0.22, jaw: 0.16 },
+  ch: { open: 0.44, width: 1.01, round: 0.18, press: 0.2, jaw: 0.2 },
+  tn: { open: 0.24, width: 1.08, round: 0.04, press: 0.28, jaw: 0.1 },
+  ss: { open: 0.14, width: 1.22, round: -0.04, press: 0.24, jaw: 0.06 },
+  kk: { open: 0.28, width: 1.02, round: 0.06, press: 0.26, jaw: 0.12 },
 });
 
 function expressionProfile(expression) {
@@ -74,49 +77,82 @@ function blendPose(base, target, amount) {
 
 function createMouthRig(THREE, sourceMouth) {
   if (!sourceMouth || !sourceMouth.parent) return null;
+  const parent = sourceMouth.parent;
+  const basePosition = sourceMouth.position.clone();
+  const baseRotation = sourceMouth.rotation.clone();
+  const baseScale = sourceMouth.scale.clone();
 
+  // Root stays unrotated so width/height sliders scale on intuitive axes.
   const group = new THREE.Group();
-  group.position.copy(sourceMouth.position);
-  group.rotation.copy(sourceMouth.rotation);
-  group.scale.copy(sourceMouth.scale);
+  group.position.copy(basePosition);
+
+  // Inner pivot preserves original orientation of the original mouth mesh.
+  const shapeGroup = new THREE.Group();
+  shapeGroup.rotation.copy(baseRotation);
+  shapeGroup.scale.copy(baseScale);
+  group.add(shapeGroup);
 
   const lipMaterial = sourceMouth.material?.clone?.()
     || new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.2, roughness: 0.65 });
+  lipMaterial.color.setHex(LIP_COLOR);
   const cavityMaterial = new THREE.MeshBasicMaterial({ color: 0x070b16 });
+  const shadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x02040a,
+    transparent: true,
+    opacity: 0.6,
+    depthWrite: false,
+  });
   const tongueMaterial = new THREE.MeshStandardMaterial({
     color: 0x7d3445,
     metalness: 0.02,
     roughness: 0.88,
   });
 
-  const upperLip = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.018, 10, 34, Math.PI), lipMaterial);
+  const upperLip = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.024, 12, 38, Math.PI), lipMaterial);
   upperLip.rotation.z = Math.PI;
-  upperLip.position.y = 0.026;
+  upperLip.position.y = 0.008;
 
-  const lowerLip = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.02, 10, 34, Math.PI), lipMaterial);
-  lowerLip.position.y = -0.03;
+  const lowerLip = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.026, 12, 38, Math.PI), lipMaterial);
+  lowerLip.position.y = -0.008;
 
   const cavity = new THREE.Mesh(new THREE.CircleGeometry(0.13, 32), cavityMaterial);
-  cavity.position.z = -0.016;
-  cavity.scale.set(0.9, 0.16, 1);
+  cavity.position.z = -0.008;
+  cavity.scale.set(0.84, 0.08, 1);
+
+  const cavityShadow = new THREE.Mesh(new THREE.CircleGeometry(0.136, 32), shadowMaterial);
+  cavityShadow.position.set(0, -0.006, -0.018);
+  cavityShadow.scale.set(0.92, 0.12, 1);
 
   const tongue = new THREE.Mesh(new THREE.CircleGeometry(0.078, 24), tongueMaterial);
-  tongue.position.set(0, -0.068, -0.014);
-  tongue.scale.set(0.78, 0.32, 1);
+  tongue.position.set(0, -0.052, -0.014);
+  tongue.scale.set(0.72, 0.26, 1);
   tongue.visible = false;
 
-  group.add(cavity, tongue, upperLip, lowerLip);
-  sourceMouth.parent.add(group);
-  sourceMouth.visible = false;
+  upperLip.visible = false;
+  lowerLip.visible = false;
+  cavity.visible = false;
+  cavityShadow.visible = false;
+
+  sourceMouth.position.set(0, 0, 0);
+  sourceMouth.rotation.set(0, 0, 0);
+  sourceMouth.scale.set(1, 1, 1);
+  sourceMouth.material = lipMaterial;
+  sourceMouth.visible = true;
+
+  shapeGroup.add(sourceMouth, cavityShadow, cavity, tongue, upperLip, lowerLip);
+  parent.add(group);
 
   return {
     group,
+    baseMouth: sourceMouth,
     upperLip,
     lowerLip,
     cavity,
+    cavityShadow,
     tongue,
     lipMaterial,
     cavityMaterial,
+    shadowMaterial,
   };
 }
 
@@ -159,6 +195,7 @@ export function createClippyController({ THREE, scene, initialState }) {
 
   const base = {
     head: clippy.head.position.clone(),
+    mouthZ: clippy.mouth.position.z,
     leftPupilX: clippy.leftPupil.position.x,
     rightPupilX: clippy.rightPupil.position.x,
     leftPupilY: clippy.leftPupil.position.y,
@@ -217,9 +254,10 @@ export function createClippyController({ THREE, scene, initialState }) {
     setMaterialColor(rightEyeMaterial, state.eyeColor);
 
     if (mouthRig) {
-      setMaterialColor(mouthRig.lipMaterial, state.darkColor);
+      setMaterialColor(mouthRig.lipMaterial, LIP_COLOR);
       const cavityColor = new THREE.Color(state.darkColor).multiplyScalar(0.4);
       setMaterialColor(mouthRig.cavityMaterial, cavityColor);
+      setMaterialColor(mouthRig.shadowMaterial, new THREE.Color(state.darkColor).multiplyScalar(0.26));
     }
   }
 
@@ -286,9 +324,14 @@ export function createClippyController({ THREE, scene, initialState }) {
     clippy.leftBrow.scale.setScalar(state.browScale);
     clippy.rightBrow.scale.setScalar(state.browScale);
 
+    const mouthOffsetY = Number.isFinite(state.mouthOffsetY) ? state.mouthOffsetY : 0;
+    const mouthOffsetZ = mouthOffsetY * MOUTH_OFFSET_Z_FACTOR;
     clippy.mouth.scale.x = state.mouthWidth;
-    clippy.mouth.scale.y = expr.mouthScaleY * state.mouthHeight;
-    clippy.mouth.position.y = expr.mouthShiftY;
+    const mouthScaleY = expr.mouthScaleY * state.mouthHeight;
+    const mouthScaleAnchorY = (1 - mouthScaleY) * MOUTH_SCALE_ANCHOR_Y;
+    clippy.mouth.scale.y = mouthScaleY;
+    clippy.mouth.position.y = expr.mouthShiftY + mouthOffsetY + mouthScaleAnchorY;
+    clippy.mouth.position.z = base.mouthZ + mouthOffsetZ;
 
     clippy.leftArm.pivot.position.x = -state.armSpread;
     clippy.rightArm.pivot.position.x = state.armSpread;
@@ -317,47 +360,87 @@ export function createClippyController({ THREE, scene, initialState }) {
     }
 
     const expr = voiceRuntime.expression;
-    const activity = clamp(voiceRuntime.current * 0.95 + voiceRuntime.visemeStrengthCurrent * 0.62, 0, 1.4);
+    const activity = clamp(voiceRuntime.current * 0.8 + voiceRuntime.visemeStrengthCurrent * 0.64, 0, 1);
 
-    voiceRuntime.phase += dt * (18 + activity * 28);
-    const flutter = Math.sin(voiceRuntime.phase) * 0.065 * activity;
+    voiceRuntime.phase += dt * (14 + activity * 20);
+    const flutter = Math.sin(voiceRuntime.phase) * 0.04 * activity;
 
-    const openAmount = clamp(voiceRuntime.poseCurrent.open * (0.45 + activity * 0.92) + flutter, 0, 1.5);
-    const widthAmount = clamp(voiceRuntime.poseCurrent.width + activity * 0.08, 0.56, 1.72);
-    const roundAmount = clamp(voiceRuntime.poseCurrent.round, -0.3, 1.1);
+    const openAmount = clamp(voiceRuntime.poseCurrent.open * (0.14 + activity * 0.66) + flutter, 0, 1.1);
+    const widthAmount = clamp(voiceRuntime.poseCurrent.width + activity * 0.05, 0.74, 1.45);
+    const roundAmount = clamp(voiceRuntime.poseCurrent.round, -0.22, 0.92);
     const pressAmount = clamp(voiceRuntime.poseCurrent.press, 0, 1);
-    const jawAmount = clamp(voiceRuntime.poseCurrent.jaw, 0, 1.1);
+    const jawAmount = clamp(voiceRuntime.poseCurrent.jaw, 0, 1);
+    const sealAmount = clamp(pressAmount * (1 - activity * 0.28), 0, 1);
+    const aperture = clamp(openAmount * (1 - sealAmount * 0.58), 0, 1.2);
+    const isBilabial = voiceRuntime.visemeKey === "mbp";
+    const bilabialLock = isBilabial ? voiceRuntime.visemeStrengthCurrent : 0;
+    const bridgeBoost =
+      clamp((0.24 - aperture) / 0.24, 0, 1)
+      * clamp(activity * 0.12 + voiceRuntime.current * 0.09, 0, 0.14);
+    const bridgeOpen = clamp((aperture + bridgeBoost) * (1 - bilabialLock * 0.95), 0, 1.16);
+    const mouthOffsetY = Number.isFinite(state.mouthOffsetY) ? state.mouthOffsetY : 0;
+    const mouthOffsetZ = mouthOffsetY * MOUTH_OFFSET_Z_FACTOR;
 
-    const mouthScaleY = expr.mouthScaleY * state.mouthHeight * (0.86 + openAmount * 0.44 + (1 - pressAmount) * 0.12);
+    const mouthScaleY = expr.mouthScaleY * state.mouthHeight * (0.96 + bridgeOpen * 0.5 + (1 - sealAmount) * 0.03);
+    const mouthScaleAnchorY = (1 - mouthScaleY) * MOUTH_SCALE_ANCHOR_Y;
     clippy.mouth.scale.x = state.mouthWidth * widthAmount;
     clippy.mouth.scale.y = mouthScaleY;
-    clippy.mouth.position.y = expr.mouthShiftY - activity * 0.028 - jawAmount * 0.032;
+    clippy.mouth.position.y = expr.mouthShiftY + mouthOffsetY + mouthScaleAnchorY - activity * 0.015 - jawAmount * 0.016;
+    clippy.mouth.position.z = base.mouthZ + mouthOffsetZ;
 
     if (!mouthRig) return;
 
-    const lipSpread = clamp(1 + (widthAmount - 1) * 0.45 - roundAmount * 0.14, 0.72, 1.7);
-    const upperLift = 0.028 + openAmount * 0.026 - pressAmount * 0.018;
-    const lowerDrop = -0.03 - openAmount * 0.118 - jawAmount * 0.052;
+    let useRig =
+      aperture > 0.11
+      || voiceRuntime.current > 0.22
+      || voiceRuntime.visemeStrengthCurrent > 0.1;
+    if (bilabialLock > 0.36) {
+      useRig = false;
+    }
+    mouthRig.baseMouth.visible = !useRig;
+    mouthRig.upperLip.visible = useRig;
+    mouthRig.lowerLip.visible = useRig;
+    if (!useRig) {
+      mouthRig.cavity.visible = false;
+      mouthRig.cavityShadow.visible = false;
+      mouthRig.tongue.visible = false;
+      return;
+    }
+
+    const lipSpread = clamp(1 + (widthAmount - 1) * 0.36 - roundAmount * 0.1, 0.78, 1.48);
+    const closedBlend = clamp((bridgeOpen - 0.03) / 0.14, 0, 1);
+    const upperLift = 0.004 + bridgeOpen * 0.016 - sealAmount * 0.012;
+    const lowerDrop = -0.004 - bridgeOpen * 0.098 - jawAmount * 0.03 + sealAmount * 0.01;
 
     mouthRig.upperLip.position.y = upperLift;
-    mouthRig.lowerLip.position.y = lowerDrop;
+    mouthRig.lowerLip.position.y = lowerDrop * closedBlend;
+    mouthRig.lowerLip.visible = true;
 
     mouthRig.upperLip.scale.x = lipSpread;
-    mouthRig.lowerLip.scale.x = clamp(lipSpread * (1 + roundAmount * 0.08), 0.68, 1.85);
+    mouthRig.lowerLip.scale.x = clamp(lipSpread * (1 + roundAmount * 0.06), 0.76, 1.56);
 
-    mouthRig.upperLip.scale.y = clamp(1 - pressAmount * 0.3 + roundAmount * 0.1, 0.62, 1.34);
-    mouthRig.lowerLip.scale.y = clamp(1 - pressAmount * 0.35 + roundAmount * 0.12, 0.58, 1.36);
+    mouthRig.upperLip.scale.y = clamp(1 - sealAmount * 0.28 + roundAmount * 0.08, 0.74, 1.24);
+    mouthRig.lowerLip.scale.y = clamp(0.7 + closedBlend * (0.3 - sealAmount * 0.32 + roundAmount * 0.1), 0.7, 1.28);
 
-    const cavityOpen = clamp(openAmount * (1.16 - pressAmount * 0.46), 0, 1.55);
-    mouthRig.cavity.visible = cavityOpen > 0.032;
-    mouthRig.cavity.scale.x = clamp(0.34 + lipSpread * 0.52 - roundAmount * 0.12, 0.2, 1.52);
-    mouthRig.cavity.scale.y = clamp(0.06 + cavityOpen * 1.24 + roundAmount * 0.16, 0.06, 1.86);
-    mouthRig.cavity.position.y = -0.016 - cavityOpen * 0.092;
+    const cavityOpen = clamp(
+      (bridgeOpen * (0.92 - sealAmount * 0.38) + activity * 0.05) * (1 - bilabialLock * 1.2),
+      0,
+      1.12,
+    );
+    mouthRig.cavity.visible = cavityOpen > 0.03;
+    mouthRig.cavity.scale.x = clamp(1.08 + (lipSpread - 1) * 0.36 + bridgeOpen * 0.06 - roundAmount * 0.04, 0.96, 1.28);
+    mouthRig.cavity.scale.y = clamp(0.54 + cavityOpen * 0.72 + roundAmount * 0.08, 0.48, 1.28);
+    mouthRig.cavity.position.y = -0.002 - cavityOpen * 0.055;
 
-    mouthRig.tongue.visible = cavityOpen > 0.22;
-    mouthRig.tongue.scale.x = clamp(0.58 + lipSpread * 0.22, 0.44, 1.08);
-    mouthRig.tongue.scale.y = clamp(0.2 + cavityOpen * 0.5, 0.16, 0.92);
-    mouthRig.tongue.position.y = -0.066 - cavityOpen * 0.058;
+    mouthRig.cavityShadow.visible = mouthRig.cavity.visible;
+    mouthRig.cavityShadow.scale.x = clamp(mouthRig.cavity.scale.x * 1.04, 0.96, 1.34);
+    mouthRig.cavityShadow.scale.y = clamp(mouthRig.cavity.scale.y * 1.08, 0.5, 1.42);
+    mouthRig.cavityShadow.position.y = mouthRig.cavity.position.y - 0.003;
+
+    mouthRig.tongue.visible = cavityOpen > 0.3 && bilabialLock < 0.28;
+    mouthRig.tongue.scale.x = clamp(0.52 + lipSpread * 0.2, 0.42, 0.98);
+    mouthRig.tongue.scale.y = clamp(0.16 + cavityOpen * 0.42, 0.14, 0.72);
+    mouthRig.tongue.position.y = -0.052 - cavityOpen * 0.05;
   }
 
   function applyPropState(force = false) {

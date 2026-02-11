@@ -224,6 +224,7 @@ let assistantViseme = {
   viseme: "sil",
   strength: 0,
 };
+let devVowelDemoRunId = 0;
 
 const controlRegistry = new Map();
 
@@ -249,6 +250,49 @@ function setStatus(text, ttlMs = 1600) {
 
 function getAvatarRuntime(avatarId = activeAvatarId) {
   return avatarRuntimeRegistry.get(avatarId) || null;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function setAssistantMouth({ viseme = "sil", strength = 0, level = 0 } = {}) {
+  assistantViseme = {
+    viseme: String(viseme || "sil"),
+    strength: clamp(Number(strength) || 0, 0, 1),
+  };
+  assistantSpeechLevel = clamp(Number(level) || 0, 0, 1);
+}
+
+async function runDevVowelDemo() {
+  if (!import.meta.env.DEV) return;
+
+  const runId = ++devVowelDemoRunId;
+  const sequence = [
+    { label: "A", viseme: "aa", strength: 0.98, level: 0.88, holdMs: 520 },
+    { label: "E", viseme: "ee", strength: 0.94, level: 0.8, holdMs: 500 },
+    { label: "I", viseme: "ee", strength: 0.9, level: 0.74, holdMs: 460 },
+    { label: "O", viseme: "oh", strength: 0.95, level: 0.84, holdMs: 520 },
+    { label: "U", viseme: "ou", strength: 0.94, level: 0.8, holdMs: 520 },
+  ];
+
+  await sleep(420);
+  if (runId !== devVowelDemoRunId || realtimeVoice.isConnected()) return;
+  setStatus("Dev mouth demo: A-E-I-O-U", 1500);
+
+  for (const step of sequence) {
+    if (runId !== devVowelDemoRunId || realtimeVoice.isConnected()) return;
+    setAssistantMouth(step);
+    await sleep(step.holdMs);
+
+    if (runId !== devVowelDemoRunId || realtimeVoice.isConnected()) return;
+    setAssistantMouth();
+    await sleep(150);
+  }
+
+  if (runId === devVowelDemoRunId && !realtimeVoice.isConnected()) {
+    setAssistantMouth();
+  }
 }
 
 function buildVoiceSessionInstructions() {
@@ -775,6 +819,7 @@ function init() {
   resize();
   loadAvatar(activeAvatarId, { instant: true, silent: true });
   startRenderLoop();
+  void runDevVowelDemo();
 }
 
 try {
