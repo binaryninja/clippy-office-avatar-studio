@@ -16,6 +16,8 @@ Bundled Three.js avatar studio featuring:
 - `js/config/avatars.js`: model definitions, defaults, and control schema
 - `js/avatars/clippy-controller.js`: Clippy runtime wrapper
 - `js/avatars/thumbtack-controller.js`: Pushy/Tacky runtime wrapper
+- `js/lib/realtime-voice.js`: OpenAI Realtime voice WebRTC client for the studio
+- `js/lib/visemes.js`: transcript-to-viseme mapping for speech mouth shaping
 - `js/lib/clippy-3d.js`: base Clippy model engine
 - `js/lib/clippy-3d-plugin-examples.js`: optional Clippy office props plugin
 - `js/lib/thumbtack-factory.js`: shared Pushy/Tacky mesh factory
@@ -29,6 +31,14 @@ npm run dev -- --host 127.0.0.1 --port 4173
 ```
 
 Open [http://127.0.0.1:4173](http://127.0.0.1:4173).
+
+## Realtime voice
+
+Use the `Voice: Connect` button in the panel header.
+
+- Preferred: provide an app endpoint at `POST /api/realtime/client_secret` that returns a short-lived Realtime client secret.
+- Fallback: the app prompts for an OpenAI API key once and uses it to request a client secret directly.
+- Optional globals for development: `window.OPENAI_REALTIME_CLIENT_SECRET` or `window.OPENAI_API_KEY`.
 
 ## Build and preview
 

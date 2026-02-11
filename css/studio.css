@@ -200,6 +200,12 @@ body::after {
   min-width: 160px;
 }
 
+.header-actions {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
 .avatar-switcher label {
   font-size: 11px;
   letter-spacing: 0.1em;
@@ -215,6 +221,29 @@ body::after {
   text-align: right;
   text-shadow: 0 0 12px rgba(0, 231, 255, 0.45);
   animation: status-pulse 1.8s ease-in-out infinite;
+  min-height: 16px;
+}
+
+.btn-voice {
+  height: 30px;
+  min-width: 154px;
+  padding: 0 11px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.btn-voice[data-state="live"] {
+  border-color: rgba(0, 231, 255, 0.5);
+  box-shadow: 0 0 18px rgba(0, 231, 255, 0.28);
+}
+
+.btn-voice[data-state="syncing"] {
+  border-color: rgba(247, 238, 109, 0.44);
+}
+
+.btn-voice:disabled {
+  cursor: progress;
+  opacity: 0.72;
 }
 
 .panel-scroll {

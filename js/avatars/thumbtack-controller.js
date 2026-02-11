@@ -23,6 +23,9 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     baseX: 0,
     baseY: 0,
     expression: expressionProfile(state.expression),
+    voiceTarget: 0,
+    voiceCurrent: 0,
+    voicePhase: Math.random() * Math.PI * 2,
   };
 
   function updateMaterials() {
@@ -169,6 +172,23 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     avatar.rightPupil.position.y = lookY;
   }
 
+  function applyVoiceFrame(dt) {
+    if (!avatar.mouth) return;
+
+    const smoothing = runtime.voiceTarget > runtime.voiceCurrent ? 0.38 : 0.2;
+    runtime.voiceCurrent += (runtime.voiceTarget - runtime.voiceCurrent) * smoothing;
+    if (runtime.voiceCurrent < 0.004) runtime.voiceCurrent = 0;
+
+    runtime.voicePhase += dt * (24 + runtime.voiceCurrent * 32);
+
+    const flutter = Math.sin(runtime.voicePhase) * 0.08 * runtime.voiceCurrent;
+    const open = clamp(runtime.voiceCurrent * 0.72 + flutter, 0, 1.2);
+    const widen = 1 + runtime.voiceCurrent * 0.16;
+
+    avatar.mouth.scale.set(widen, 1 + open, widen);
+    avatar.mouth.position.y = -0.11 + runtime.expression.mouthY - runtime.voiceCurrent * 0.018;
+  }
+
   function setState(nextState = {}, { force = false } = {}) {
     Object.assign(state, nextState);
 
@@ -188,6 +208,12 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     }
 
     applyAnimationFrame(frameDt);
+    applyVoiceFrame(frameDt);
+  }
+
+  function setVoiceActivity(level = 0) {
+    const next = Number(level);
+    runtime.voiceTarget = clamp(Number.isFinite(next) ? next : 0, 0, 1);
   }
 
   function dispose() {
@@ -201,6 +227,7 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     group: avatar.group,
     setState,
     update,
+    setVoiceActivity,
     dispose,
     getCatalog() {
       return {

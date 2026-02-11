@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Realtime voice integration in the studio with a `Voice` connect button, WebRTC session handling, and assistant-audio lip movement on active avatars.
+- Viseme-driven Clippy speech mouth rig that blends transcript-derived mouth shapes with realtime audio energy.
+
 ## [2026-02-11]
 
 ### Added

@@ -7,7 +7,7 @@
     "serve": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check:syntax": "node --check js/studio.js && node --check js/config/avatars.js && node --check js/avatars/clippy-controller.js && node --check js/avatars/thumbtack-controller.js && node --check js/lib/utils.js && node --check js/lib/clippy-3d.js && node --check js/lib/thumbtack-factory.js && node --check js/lib/clippy-3d-plugin-examples.js",
+    "check:syntax": "node --check js/studio.js && node --check js/config/avatars.js && node --check js/avatars/clippy-controller.js && node --check js/avatars/thumbtack-controller.js && node --check js/lib/utils.js && node --check js/lib/visemes.js && node --check js/lib/realtime-voice.js && node --check js/lib/clippy-3d.js && node --check js/lib/thumbtack-factory.js && node --check js/lib/clippy-3d-plugin-examples.js",
     "lint": "eslint .",
     "check": "npm run check:syntax && npm run lint && npm run build"
   },

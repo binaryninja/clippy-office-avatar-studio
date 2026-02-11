@@ -9,6 +9,7 @@ import {
 import { createClippyController } from "./avatars/clippy-controller.js";
 import { createThumbtackController } from "./avatars/thumbtack-controller.js";
 import { clamp, randomBetween, randomColor } from "./lib/utils.js";
+import { createRealtimeVoice } from "./lib/realtime-voice.js";
 
 const canvas = document.getElementById("studioCanvas");
 const stageEl = document.querySelector(".stage");
@@ -20,6 +21,7 @@ const btnReset = document.getElementById("btnReset");
 const btnRandom = document.getElementById("btnRandom");
 const btnCopy = document.getElementById("btnCopy");
 const btnApply = document.getElementById("btnApply");
+const btnVoice = document.getElementById("btnVoice");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -217,6 +219,11 @@ const stageRig = createStageRig();
 
 let activeAvatarId = AVATAR_ORDER[0] || "clippy";
 const avatarRuntimeRegistry = new Map();
+let assistantSpeechLevel = 0;
+let assistantViseme = {
+  viseme: "sil",
+  strength: 0,
+};
 
 const controlRegistry = new Map();
 
@@ -243,6 +250,41 @@ function setStatus(text, ttlMs = 1600) {
 function getAvatarRuntime(avatarId = activeAvatarId) {
   return avatarRuntimeRegistry.get(avatarId) || null;
 }
+
+function buildVoiceSessionInstructions() {
+  const runtime = getAvatarRuntime();
+  const label = runtime?.definition?.label || "Office avatar";
+  const description = runtime?.definition?.description || "a mascot inside a browser-based 3D avatar studio";
+
+  return [
+    `You are ${label}, ${description}.`,
+    "You are speaking with the user by realtime voice.",
+    "Keep responses short, clear, and conversational unless the user asks for details.",
+    "Ask one focused follow-up question when useful.",
+  ].join(" ");
+}
+
+function buildVoiceGreetingInstructions() {
+  const runtime = getAvatarRuntime();
+  const label = runtime?.definition?.label || "the avatar";
+  return `In one short friendly sentence, greet the user as ${label} and ask what they want to work on.`;
+}
+
+const realtimeVoice = createRealtimeVoice({
+  buttonEl: btnVoice,
+  onStatus: setStatus,
+  onAssistantSpeechLevel: (level) => {
+    assistantSpeechLevel = clamp(level, 0, 1);
+  },
+  onAssistantViseme: (payload) => {
+    assistantViseme = {
+      viseme: String(payload?.viseme || "sil"),
+      strength: clamp(Number(payload?.strength) || 0, 0, 1),
+    };
+  },
+  getSessionInstructions: buildVoiceSessionInstructions,
+  getGreetingInstructions: buildVoiceGreetingInstructions,
+});
 
 function flattenControlFields(definition) {
   const fields = [];
@@ -560,6 +602,7 @@ function loadAvatar(avatarId, { instant = false, silent = false } = {}) {
   buildControls(runtime.definition, runtime.catalog);
   syncControlsFromState();
   publishPresetText();
+  realtimeVoice.syncSessionContext();
 
   if (!silent) {
     setStatus(`${runtime.definition.label} in focus`, 2100);
@@ -705,6 +748,12 @@ function startRenderLoop() {
 
     for (const [avatarId, runtime] of avatarRuntimeRegistry) {
       const lookPointer = avatarId === activeAvatarId ? pointer : neutralPointer;
+      if (typeof runtime.controller.setVoiceActivity === "function") {
+        runtime.controller.setVoiceActivity(avatarId === activeAvatarId ? assistantSpeechLevel : 0);
+      }
+      if (typeof runtime.controller.setVoiceViseme === "function") {
+        runtime.controller.setVoiceViseme(avatarId === activeAvatarId ? assistantViseme : null);
+      }
       runtime.controller.update(dt, lookPointer);
     }
 
@@ -719,6 +768,7 @@ function startRenderLoop() {
 
 function init() {
   populateAvatarSelect();
+  realtimeVoice.init();
   installGlobalHandlers();
   applyScenePreset();
   createAvatarRuntimes();
