@@ -667,6 +667,7 @@ function createController(definition, initialState) {
     initialState,
     profile: definition.profile,
     stageTopY: definition.stageTopY,
+    avatarId: definition.id,
   });
 }
 

@@ -1,6 +1,9 @@
 import { createTowelyAvatar } from "../lib/towely-factory.js";
 import { clamp } from "../lib/utils.js";
 import { registerEngine } from "../engines.js";
+import { createPropManager, listSharedProps, getSharedProp, loadPropPlacement, savePropPlacement, applyPlacementToObject } from "../lib/prop-system.js";
+import "../lib/shared-props.js";
+import { NO_PROP_VALUE } from "../config/avatars.js";
 
 const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate"];
 const EXPRESSION_CHOICES = ["neutral", "smug", "angry", "startled"];
@@ -143,10 +146,15 @@ function blendModePose(fromPose, toPose, blend) {
   };
 }
 
-export function createTowelyController({ THREE, scene, initialState, stageTopY }) {
+export function createTowelyController({ THREE, scene, initialState, stageTopY, avatarId }) {
   const state = { ...initialState };
   const avatar = createTowelyAvatar(THREE, state);
   scene.add(avatar.group);
+
+  const propManager = createPropManager();
+  const sharedPropNames = listSharedProps();
+  let currentPropName = NO_PROP_VALUE;
+  let currentPropId = null;
 
   const runtime = {
     elapsed: 0,
@@ -412,6 +420,55 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     avatar.rightPupil.scale.set(runtime.pupilBaseScale, runtime.pupilBaseScale * pupilYScale, 1);
   }
 
+  function applyPropPlacement() {
+    if (currentPropId === null) return;
+    const obj = propManager.getObject(currentPropId);
+    if (!obj) return;
+    applyPlacementToObject(obj, {
+      x: state.propX, y: state.propY, z: state.propZ,
+      scale: state.propScale,
+      rotX: state.propRotX, rotY: state.propRotY, rotZ: state.propRotZ,
+    });
+  }
+
+  function syncProp(force = false) {
+    const desired = state.propName || NO_PROP_VALUE;
+    if (!force && desired === currentPropName) return;
+
+    if (currentPropId !== null) {
+      propManager.detach(currentPropId);
+      currentPropId = null;
+    }
+    currentPropName = NO_PROP_VALUE;
+
+    if (desired === NO_PROP_VALUE) return;
+    const def = getSharedProp(desired);
+    if (!def) return;
+
+    const anchors = {
+      head: avatar.faceRoot,
+      body: avatar.bodyShell,
+      leftArm: avatar.leftArm?.shoulder,
+      rightArm: avatar.rightArm?.shoulder,
+    };
+    const anchor = anchors[def.defaultAnchor];
+    currentPropId = propManager.attach({ name: desired, anchorName: def.defaultAnchor, anchor, propDefinition: def, THREE });
+    if (currentPropId === null) return;
+    currentPropName = desired;
+
+    // Load saved or default placement into state
+    const placement = loadPropPlacement(desired, avatarId, def);
+    state.propX = placement.x;
+    state.propY = placement.y;
+    state.propZ = placement.z;
+    state.propScale = placement.scale;
+    state.propRotX = placement.rotX;
+    state.propRotY = placement.rotY;
+    state.propRotZ = placement.rotZ;
+
+    applyPropPlacement();
+  }
+
   function setState(nextState = {}, { force = false } = {}) {
     Object.assign(state, nextState);
 
@@ -426,6 +483,15 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     syncModeTransition({ force });
     applyShapeState();
     updateMaterials();
+    syncProp(force);
+    applyPropPlacement();
+    if (currentPropName !== NO_PROP_VALUE) {
+      savePropPlacement(currentPropName, avatarId, {
+        x: state.propX, y: state.propY, z: state.propZ,
+        scale: state.propScale,
+        rotX: state.propRotX, rotY: state.propRotY, rotZ: state.propRotZ,
+      });
+    }
   }
 
   function update(dt, pointer) {
@@ -440,6 +506,7 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
   }
 
   function dispose() {
+    propManager.detachAll();
     scene.remove(avatar.group);
     avatar.dispose();
   }
@@ -463,7 +530,7 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
       return {
         modes: [...MODE_CHOICES],
         expressions: [...EXPRESSION_CHOICES],
-        props: [],
+        props: [NO_PROP_VALUE, ...sharedPropNames],
       };
     },
   };

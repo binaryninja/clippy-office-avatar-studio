@@ -9,6 +9,50 @@
  *   { object3d: Object3D, update?(ctx): void, dispose?(): void }
  */
 
+/* ── Placement helpers ── */
+
+export const PLACEMENT_DEFAULTS = { x: 0, y: 0.3, z: 0, scale: 1, rotX: 0, rotY: 0, rotZ: 0 };
+
+export function getPlacementStorageKey(propName, avatarId) {
+  return `prop-placement:${propName}:${avatarId}`;
+}
+
+export function loadPropPlacement(propName, avatarId, propDefinition) {
+  // 1. Try localStorage
+  const storageKey = getPlacementStorageKey(propName, avatarId);
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { ...PLACEMENT_DEFAULTS, ...parsed };
+    }
+  } catch { /* ignore */ }
+
+  // 2. Try prop definition per-avatar defaults
+  if (propDefinition?.placements?.[avatarId]) {
+    return { ...PLACEMENT_DEFAULTS, ...propDefinition.placements[avatarId] };
+  }
+
+  // 3. Fallback
+  return { ...PLACEMENT_DEFAULTS };
+}
+
+export function savePropPlacement(propName, avatarId, placement) {
+  const storageKey = getPlacementStorageKey(propName, avatarId);
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(placement));
+  } catch { /* ignore */ }
+}
+
+export function applyPlacementToObject(object3d, placement) {
+  if (!object3d) return;
+  object3d.position.set(placement.x, placement.y, placement.z);
+  object3d.scale.setScalar(placement.scale);
+  object3d.rotation.set(placement.rotX, placement.rotY, placement.rotZ);
+}
+
+/* ── Prop manager ── */
+
 let nextPropId = 1;
 
 /**
@@ -84,7 +128,12 @@ export function createPropManager() {
     }));
   }
 
-  return { attach, detach, detachAll, update, listActive };
+  function getObject(id) {
+    const entry = activePropMap.get(id);
+    return entry?.object3d || null;
+  }
+
+  return { attach, detach, detachAll, update, listActive, getObject };
 }
 
 const sharedPropRegistry = new Map();
@@ -97,6 +146,7 @@ export function registerSharedProp(name, definition) {
   sharedPropRegistry.set(name, {
     name,
     defaultAnchor: definition.defaultAnchor || "head",
+    placements: definition.placements || null,
     create: definition.create,
   });
 }

@@ -1,6 +1,9 @@
 import { createThumbTackAvatar, expressionProfile } from "../lib/thumbtack-factory.js";
 import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
 import { registerEngine } from "../engines.js";
+import { createPropManager, listSharedProps, getSharedProp, loadPropPlacement, savePropPlacement, applyPlacementToObject } from "../lib/prop-system.js";
+import "../lib/shared-props.js";
+import { NO_PROP_VALUE } from "../config/avatars.js";
 
 const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate"];
 const EXPRESSION_CHOICES = ["neutral", "smile", "determined", "startled"];
@@ -12,7 +15,7 @@ const THUMBTACK_PUPIL_SURFACE_SETTINGS = Object.freeze({
   edgeInset: 0.08,
 });
 
-export function createThumbtackController({ THREE, scene, initialState, profile, stageTopY }) {
+export function createThumbtackController({ THREE, scene, initialState, profile, stageTopY, avatarId }) {
   const state = { ...initialState };
   const avatar = createThumbTackAvatar(THREE, state, profile);
   scene.add(avatar.group);
@@ -21,6 +24,11 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     shapeKey: "",
     mouthKey: "",
   };
+
+  const propManager = createPropManager();
+  const sharedPropNames = listSharedProps();
+  let currentPropName = NO_PROP_VALUE;
+  let currentPropId = null;
 
   const runtime = {
     elapsed: 0,
@@ -215,6 +223,50 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     avatar.mouth.position.y = -0.11 + runtime.expression.mouthY - runtime.voiceCurrent * 0.018;
   }
 
+  function applyPropPlacement() {
+    if (currentPropId === null) return;
+    const obj = propManager.getObject(currentPropId);
+    if (!obj) return;
+    applyPlacementToObject(obj, {
+      x: state.propX, y: state.propY, z: state.propZ,
+      scale: state.propScale,
+      rotX: state.propRotX, rotY: state.propRotY, rotZ: state.propRotZ,
+    });
+  }
+
+  function syncProp(force = false) {
+    const desired = state.propName || NO_PROP_VALUE;
+    if (!force && desired === currentPropName) return;
+
+    if (currentPropId !== null) {
+      propManager.detach(currentPropId);
+      currentPropId = null;
+    }
+    currentPropName = NO_PROP_VALUE;
+
+    if (desired === NO_PROP_VALUE) return;
+    const def = getSharedProp(desired);
+    if (!def) return;
+
+    const anchors = { head: avatar.faceRoot, body: avatar.body };
+    const anchor = anchors[def.defaultAnchor];
+    currentPropId = propManager.attach({ name: desired, anchorName: def.defaultAnchor, anchor, propDefinition: def, THREE });
+    if (currentPropId === null) return;
+    currentPropName = desired;
+
+    // Load saved or default placement into state
+    const placement = loadPropPlacement(desired, avatarId, def);
+    state.propX = placement.x;
+    state.propY = placement.y;
+    state.propZ = placement.z;
+    state.propScale = placement.scale;
+    state.propRotX = placement.rotX;
+    state.propRotY = placement.rotY;
+    state.propRotZ = placement.rotZ;
+
+    applyPropPlacement();
+  }
+
   function setState(nextState = {}, { force = false } = {}) {
     Object.assign(state, nextState);
 
@@ -223,6 +275,15 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
 
     applyShapeState(force);
     updateMaterials();
+    syncProp(force);
+    applyPropPlacement();
+    if (currentPropName !== NO_PROP_VALUE) {
+      savePropPlacement(currentPropName, avatarId, {
+        x: state.propX, y: state.propY, z: state.propZ,
+        scale: state.propScale,
+        rotX: state.propRotX, rotY: state.propRotY, rotZ: state.propRotZ,
+      });
+    }
   }
 
   function update(dt, pointer) {
@@ -243,6 +304,7 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
   }
 
   function dispose() {
+    propManager.detachAll();
     scene.remove(avatar.group);
     avatar.dispose();
   }
@@ -265,7 +327,7 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
       return {
         modes: [...MODE_CHOICES],
         expressions: [...EXPRESSION_CHOICES],
-        props: [],
+        props: [NO_PROP_VALUE, ...sharedPropNames],
       };
     },
   };
