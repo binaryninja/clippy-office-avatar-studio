@@ -7,6 +7,7 @@ const BODY_BOTTOM_Y = -2.42;
 const BODY_HEIGHT = BODY_TOP_Y - BODY_BOTTOM_Y;
 const LEG_TOP_Y = -2.58;
 const SHOE_RADIUS = 0.19;
+const TOWELY_TEXTURE_URL = new URL("../../assets/towely-terry-texture.png", import.meta.url).href;
 
 const TERRY_VERTEX_SHADER = `
   varying vec2 vUv;
@@ -103,6 +104,8 @@ const TERRY_FRAGMENT_SHADER = `
   uniform float uStripeOffset;
   uniform float uSpecularStrength;
   uniform vec3 uLightPos;
+  uniform sampler2D uTextureMap;
+  uniform vec2 uTextureRepeat;
 
   float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -190,6 +193,10 @@ const TERRY_FRAGMENT_SHADER = `
     float fabricVar = fbm(uv * 4.0 + uTime * 0.02);
     float grain = vnoise(uv * loopSc * 8.0);
     float fineGrain = vnoise(uv * loopSc * 16.0);
+    vec2 fabricUv = uv * uTextureRepeat;
+    vec3 fabricSample = texture2D(uTextureMap, fabricUv).rgb;
+    float fabricLuma = dot(fabricSample, vec3(0.299, 0.587, 0.114));
+    float fabricMapDetail = smoothstep(0.18, 0.9, fabricLuma);
 
     float fuzz = uFuzziness / 100.0;
     float texture = loopPattern * 0.4
@@ -197,6 +204,7 @@ const TERRY_FRAGMENT_SHADER = `
                   + fabricVar * 0.15
                   + grain * 0.15 * fuzz
                   + fineGrain * 0.1 * fuzz;
+    texture = mix(texture, fabricMapDetail, 0.68);
 
     float stripeW = uStripeWidth / 100.0;
     float stripePos1 = smoothstep(0.18 - stripeW * 0.06, 0.20 - stripeW * 0.04, uv.y)
@@ -212,7 +220,7 @@ const TERRY_FRAGMENT_SHADER = `
     float stripeTexture = terryLoops(uv + 0.15, loopSc * 0.9) * 0.3 + 0.7;
     stripe *= stripeTexture;
 
-    vec3 baseColor = uColor;
+    vec3 baseColor = mix(fabricSample, fabricSample * uColor, 0.28);
     vec3 colorVar = baseColor * (0.85 + 0.3 * texture);
     colorVar *= (0.8 + 0.4 * loopPattern);
     vec3 stripeColor = uStripeColor * (0.85 + 0.15 * stripeTexture);
@@ -409,7 +417,23 @@ function createFabricMaps(THREE) {
   };
 }
 
-function createTerryMaterial(THREE, currentState) {
+function createTowelyTextureMap(THREE) {
+  const textureMap = new THREE.TextureLoader().load(TOWELY_TEXTURE_URL);
+  textureMap.wrapS = THREE.RepeatWrapping;
+  textureMap.wrapT = THREE.RepeatWrapping;
+  textureMap.repeat.set(3.2, 7.2);
+  textureMap.needsUpdate = true;
+
+  if (THREE.SRGBColorSpace) {
+    textureMap.colorSpace = THREE.SRGBColorSpace;
+  } else if (THREE.sRGBEncoding !== undefined) {
+    textureMap.encoding = THREE.sRGBEncoding;
+  }
+
+  return textureMap;
+}
+
+function createTerryMaterial(THREE, currentState, textureMap) {
   const roughness = clamp(currentState.roughness ?? 0.62, 0, 1);
   const metalness = clamp(currentState.metalness ?? 0.14, 0, 1);
   const clearcoat = clamp(currentState.clearcoat ?? 0.24, 0, 1);
@@ -430,6 +454,8 @@ function createTerryMaterial(THREE, currentState) {
       value: clamp(0.09 + (1 - roughness) * 0.18 + clearcoat * 0.1 + metalness * 0.08, 0.03, 0.5),
     },
     uLightPos: { value: new THREE.Vector3(3.2, 5.8, 4.6) },
+    uTextureMap: { value: textureMap },
+    uTextureRepeat: { value: textureMap.repeat.clone() },
   };
 
   const material = new THREE.ShaderMaterial({
@@ -493,10 +519,11 @@ export function createTowelyAvatar(THREE, currentState = {}) {
   bodyRoot.add(bodyShell, faceRoot);
 
   const fabricMaps = createFabricMaps(THREE);
-  const generatedTextures = [fabricMaps.roughnessMap, fabricMaps.normalMap];
+  const textureMap = createTowelyTextureMap(THREE);
+  const generatedTextures = [fabricMaps.roughnessMap, fabricMaps.normalMap, textureMap];
 
   const materials = {
-    cloth: createTerryMaterial(THREE, currentState),
+    cloth: createTerryMaterial(THREE, currentState, textureMap),
     stripe: new THREE.MeshStandardMaterial({
       color: currentState.stripeColor || "#d9dcf2",
       metalness: 0.01,
