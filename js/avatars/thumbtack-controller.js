@@ -35,9 +35,10 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     },
   });
 
-  // Hide the old simple mouth line (if desired)
-  if (avatar.mouth) {
-    avatar.mouth.visible = false;
+  if (mouthRig?.group) {
+    // Hide the old simple mouth line — the rig replaces it
+    if (avatar.mouth) avatar.mouth.visible = false;
+    avatar.faceRoot.add(mouthRig.group);
   }
 
   const geometryCache = {

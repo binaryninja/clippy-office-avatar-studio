@@ -3,7 +3,7 @@ import { createClippy3D } from "../lib/clippy-3d.js";
 import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
 import { registerEngine } from "../engines.js";
 import { createPropManager, listSharedProps, getSharedProp, loadPropPlacement, savePropPlacement, applyPlacementToObject } from "../lib/prop-system.js";
-import { createUniversalMouth } from "../lib/mouth-rig.js";
+import { createUniversalMouth, VISEME_POSES } from "../lib/mouth-rig.js";
 import "../lib/shared-props.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
@@ -11,23 +11,6 @@ const FALLBACK_MODES = ["idle", "wave", "celebrate", "spin", "point"];
 const EXPRESSION_CHOICES = ["neutral", "happy", "focused", "surprised"];
 const SIL_VISEME = "sil";
 const LIP_COLOR = 0xb53b4e;
-const MOUTH_OFFSET_Z_FACTOR = -0.22;
-const MOUTH_SCALE_ANCHOR_Y = 0.07;
-
-const VISEME_POSES = Object.freeze({
-  sil: { open: 0, width: 1, round: 0, press: 1, jaw: 0 },
-  aa: { open: 0.82, width: 1.11, round: 0.08, press: 0.05, jaw: 0.52 },
-  ee: { open: 0.32, width: 1.3, round: -0.14, press: 0.08, jaw: 0.12 },
-  oh: { open: 0.66, width: 0.9, round: 0.72, press: 0.09, jaw: 0.32 },
-  ou: { open: 0.48, width: 0.8, round: 0.84, press: 0.12, jaw: 0.2 },
-  fv: { open: 0.16, width: 1.02, round: 0.02, press: 0.45, jaw: 0.04 },
-  mbp: { open: 0, width: 1, round: 0, press: 1, jaw: 0 },
-  th: { open: 0.36, width: 1.08, round: 0.1, press: 0.22, jaw: 0.16 },
-  ch: { open: 0.44, width: 1.01, round: 0.18, press: 0.2, jaw: 0.2 },
-  tn: { open: 0.24, width: 1.08, round: 0.04, press: 0.28, jaw: 0.1 },
-  ss: { open: 0.14, width: 1.22, round: -0.04, press: 0.24, jaw: 0.06 },
-  kk: { open: 0.28, width: 1.02, round: 0.06, press: 0.26, jaw: 0.12 },
-});
 
 const CLIPPY_EYE_RADIUS = 0.22;
 const CLIPPY_PUPIL_RADIUS = 0.11;
@@ -106,7 +89,10 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
   });
 
   if (mouthRig?.group) {
-    clippy.mouth = mouthRig.group;
+    // Hide the original mouth mesh from clippy-3d — the rig replaces it
+    if (clippy.mouth) clippy.mouth.visible = false;
+    // Add the rig group into the head so it moves with the avatar
+    clippy.head.add(mouthRig.group);
   }
 
   const availableModes = typeof clippy.listAnimations === "function" ? clippy.listAnimations() : FALLBACK_MODES;
@@ -135,7 +121,6 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
 
   const base = {
     head: clippy.head.position.clone(),
-    mouthZ: clippy.mouth.position.z,
     browSpacing: Math.abs(clippy.leftBrow.position.x),
     leftPupilX: clippy.leftPupil.position.x,
     rightPupilX: clippy.rightPupil.position.x,
@@ -213,7 +198,6 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     clippy.head.scale.setScalar(state.headScale);
 
     const expr = expressionProfile(state.expression);
-    voiceRuntime.expression = expr;
     const headWaveOffset = clippy.head.position.y - base.head.y;
     clippy.head.position.x = base.head.x + state.headX;
     clippy.head.position.y = base.head.y + headWaveOffset + state.headY;
@@ -275,15 +259,6 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     clippy.leftBrow.scale.setScalar(state.browScale);
     clippy.rightBrow.scale.setScalar(state.browScale);
 
-    const mouthOffsetY = Number.isFinite(state.mouthOffsetY) ? state.mouthOffsetY : 0;
-    const mouthOffsetZ = mouthOffsetY * MOUTH_OFFSET_Z_FACTOR;
-    clippy.mouth.scale.x = state.mouthWidth;
-    const mouthScaleY = expr.mouthScaleY * state.mouthHeight;
-    const mouthScaleAnchorY = (1 - mouthScaleY) * MOUTH_SCALE_ANCHOR_Y;
-    clippy.mouth.scale.y = mouthScaleY;
-    clippy.mouth.position.y = expr.mouthShiftY + mouthOffsetY + mouthScaleAnchorY;
-    clippy.mouth.position.z = base.mouthZ + mouthOffsetZ;
-
     clippy.leftArm.pivot.position.x = -state.armSpread;
     clippy.rightArm.pivot.position.x = state.armSpread;
     clippy.leftArm.pivot.position.y = state.armY;
@@ -326,12 +301,10 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
   }
 
   function applyMouthPlacement() {
-    if (!clippy.mouth) return;
-    clippy.mouth.position.x = state.mouthRigX;
-    clippy.mouth.position.y = state.mouthRigY;
-    clippy.mouth.position.z = state.mouthRigZ;
-    clippy.mouth.scale.setScalar(state.mouthRigScale);
-    clippy.mouth.rotation.set(state.mouthRigRotX, state.mouthRigRotY, state.mouthRigRotZ);
+    if (!mouthRig?.group) return;
+    mouthRig.group.position.set(state.mouthRigX, state.mouthRigY, state.mouthRigZ);
+    mouthRig.group.scale.setScalar(state.mouthRigScale);
+    mouthRig.group.rotation.set(state.mouthRigRotX, state.mouthRigRotY, state.mouthRigRotZ);
   }
 
   function applyVoiceFrame(dt) {

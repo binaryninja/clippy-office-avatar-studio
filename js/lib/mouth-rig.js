@@ -149,9 +149,9 @@ export function createUniversalMouth({ THREE, anchor, options = {} }) {
   tongue.position.set(0, -0.052, -0.014);
   tongue.scale.set(0.72, 0.26, 1);
 
-  // Initially hide all elements (shown when voice activity detected)
-  upperLip.visible = false;
-  lowerLip.visible = false;
+  // Lips are always visible (closed resting pose); interior hides at rest
+  upperLip.visible = true;
+  lowerLip.visible = true;
   cavity.visible = false;
   cavityShadow.visible = false;
   tongue.visible = false;
@@ -244,20 +244,20 @@ export function createUniversalMouth({ THREE, anchor, options = {} }) {
       clamp(activity * 0.12 + runtime.voiceCurrent * 0.09, 0, 0.14);
     const bridgeOpen = clamp((aperture + bridgeBoost) * (1 - bilabialLock * 0.95), 0, 1.16);
 
-    // Determine rig visibility
-    let useRig =
+    // Lips are always visible; interior only shows during speech
+    const mouthOpen =
       aperture > 0.11 || runtime.voiceCurrent > 0.22 || runtime.visemeStrengthCurrent > 0.1;
-    if (bilabialLock > 0.36) {
-      useRig = false;
-    }
+    const showInterior = mouthOpen && bilabialLock <= 0.36;
 
-    upperLip.visible = useRig;
-    lowerLip.visible = useRig;
-
-    if (!useRig) {
+    if (!showInterior) {
       cavity.visible = false;
       cavityShadow.visible = false;
       tongue.visible = false;
+      // Reset lips to closed resting position (flattened into a line)
+      upperLip.position.y = 0.001;
+      lowerLip.position.y = -0.001;
+      upperLip.scale.set(1, 0.18, 1);
+      lowerLip.scale.set(1, 0.18, 1);
       return;
     }
 

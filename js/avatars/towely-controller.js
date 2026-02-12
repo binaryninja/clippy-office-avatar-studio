@@ -166,9 +166,10 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     },
   });
 
-  // Hide the old simple smile mesh (if desired)
-  if (avatar.smile) {
-    avatar.smile.visible = false;
+  if (mouthRig?.group) {
+    // Hide the old simple smile mesh — the rig replaces it
+    if (avatar.smile) avatar.smile.visible = false;
+    avatar.faceRoot.add(mouthRig.group);
   }
 
   const propManager = createPropManager();
