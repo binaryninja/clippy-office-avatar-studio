@@ -563,6 +563,14 @@ export function createClippyController({ THREE, scene, initialState }) {
     setVoiceActivity,
     setVoiceViseme,
     dispose,
+    getAnchors() {
+      return {
+        head: clippy.head,
+        body: clippy.group,
+        leftArm: clippy.leftArm?.pivot || clippy.leftArm?.upper,
+        rightArm: clippy.rightArm?.pivot || clippy.rightArm?.upper,
+      };
+    },
     getCatalog() {
       return {
         modes: availableModes,

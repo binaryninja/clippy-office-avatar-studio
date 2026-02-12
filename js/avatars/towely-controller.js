@@ -450,6 +450,14 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     setState,
     update,
     dispose,
+    getAnchors() {
+      return {
+        head: avatar.faceRoot,
+        body: avatar.bodyShell,
+        leftArm: avatar.leftArm?.shoulder,
+        rightArm: avatar.rightArm?.shoulder,
+      };
+    },
     getCatalog() {
       return {
         modes: [...MODE_CHOICES],
