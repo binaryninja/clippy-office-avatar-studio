@@ -13,6 +13,7 @@ import "./avatars/towely-controller.js";
 import { clamp, randomBetween, randomColor } from "./lib/utils.js";
 import { createRealtimeVoice } from "./lib/realtime-voice.js";
 import { createElevenLabsVoice } from "./lib/elevenlabs-voice.js";
+import { assertControllerInterface } from "./lib/controller-utils.js";
 
 const canvas = document.getElementById("studioCanvas");
 const stageEl = document.querySelector(".stage");
@@ -687,6 +688,7 @@ function createAvatarRuntimes() {
 
     const initialState = { ...definition.defaultState };
     const controller = createController(definition, initialState);
+    assertControllerInterface(controller, definition.engine);
     const catalog = controller.getCatalog();
     const state = sanitizeState(definition, initialState, catalog, definition.defaultState);
 

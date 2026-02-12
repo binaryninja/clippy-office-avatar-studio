@@ -179,6 +179,9 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     modeBlend: 1,
     blinkTimer: 0,
     blinkOffset: 0.34,
+    voiceTarget: 0,
+    voiceCurrent: 0,
+    voicePhase: Math.random() * Math.PI * 2,
   };
 
   function updateMaterials() {
@@ -420,6 +423,23 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     avatar.rightPupil.scale.set(runtime.pupilBaseScale, runtime.pupilBaseScale * pupilYScale, 1);
   }
 
+  function applyVoiceFrame(dt) {
+    const smoothing = runtime.voiceTarget > runtime.voiceCurrent ? 0.38 : 0.2;
+    runtime.voiceCurrent += (runtime.voiceTarget - runtime.voiceCurrent) * smoothing;
+    if (runtime.voiceCurrent < 0.004) runtime.voiceCurrent = 0;
+
+    runtime.voicePhase += dt * (24 + runtime.voiceCurrent * 32);
+
+    const flutter = Math.sin(runtime.voicePhase) * 0.06 * runtime.voiceCurrent;
+    const open = clamp(runtime.voiceCurrent * 0.72 + flutter, 0, 1.2);
+
+    const expr = expressionProfile(state.expression);
+    const mouthWidth = clamp(state.mouthWidth * expr.mouthWidth, 0.6, 1.8);
+    const mouthOpen = clamp(state.mouthOpen + expr.mouthOpen + open, 0, 1.3);
+
+    avatar.smile.scale.set(0.88 * mouthWidth, 0.86 + mouthOpen * 0.16, 1);
+  }
+
   function applyPropPlacement() {
     if (currentPropId === null) return;
     const obj = propManager.getObject(currentPropId);
@@ -503,6 +523,17 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     }
 
     applyAnimationFrame(frameDt);
+    applyVoiceFrame(frameDt);
+  }
+
+  function setVoiceActivity(level = 0) {
+    const next = Number(level);
+    runtime.voiceTarget = clamp(Number.isFinite(next) ? next : 0, 0, 1);
+  }
+
+  function setVoiceViseme(_payload) {
+    // Towely uses voice-activity-driven mouth animation;
+    // viseme-specific shaping is not yet implemented for this engine.
   }
 
   function dispose() {
@@ -517,6 +548,8 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     group: avatar.group,
     setState,
     update,
+    setVoiceActivity,
+    setVoiceViseme,
     dispose,
     getAnchors() {
       return {
