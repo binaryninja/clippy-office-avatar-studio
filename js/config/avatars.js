@@ -92,6 +92,13 @@ const pinFields = [
         options: ["neutral", "smile", "determined", "startled"],
       },
       {
+        key: "propName",
+        label: "Prop",
+        type: "select",
+        options: [NO_PROP_VALUE],
+        catalogKey: "props",
+      },
+      {
         key: "speed",
         label: "Playback Speed",
         type: "range",
@@ -100,6 +107,18 @@ const pinFields = [
         step: 0.05,
         format: "speed",
       },
+    ],
+  },
+  {
+    title: "Prop Placement",
+    fields: [
+      { key: "propX", label: "Prop X", type: "range", min: -1.5, max: 1.5, step: 0.01 },
+      { key: "propY", label: "Prop Y", type: "range", min: -1.5, max: 1.5, step: 0.01 },
+      { key: "propZ", label: "Prop Z", type: "range", min: -1.0, max: 1.0, step: 0.01 },
+      { key: "propScale", label: "Prop Scale", type: "range", min: 0.1, max: 3, step: 0.01 },
+      { key: "propRotX", label: "Prop Tilt X", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "propRotY", label: "Prop Tilt Y", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "propRotZ", label: "Prop Tilt Z", type: "range", min: -3.14, max: 3.14, step: 0.01 },
     ],
   },
   {
@@ -156,6 +175,13 @@ const towelyFields = [
         options: ["neutral", "smug", "angry", "startled"],
       },
       {
+        key: "propName",
+        label: "Prop",
+        type: "select",
+        options: [NO_PROP_VALUE],
+        catalogKey: "props",
+      },
+      {
         key: "speed",
         label: "Playback Speed",
         type: "range",
@@ -164,6 +190,18 @@ const towelyFields = [
         step: 0.05,
         format: "speed",
       },
+    ],
+  },
+  {
+    title: "Prop Placement",
+    fields: [
+      { key: "propX", label: "Prop X", type: "range", min: -1.5, max: 1.5, step: 0.01 },
+      { key: "propY", label: "Prop Y", type: "range", min: -1.5, max: 1.5, step: 0.01 },
+      { key: "propZ", label: "Prop Z", type: "range", min: -1.0, max: 1.0, step: 0.01 },
+      { key: "propScale", label: "Prop Scale", type: "range", min: 0.1, max: 3, step: 0.01 },
+      { key: "propRotX", label: "Prop Tilt X", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "propRotY", label: "Prop Tilt Y", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "propRotZ", label: "Prop Tilt Z", type: "range", min: -3.14, max: 3.14, step: 0.01 },
     ],
   },
   {
@@ -269,7 +307,16 @@ export const AVATAR_DEFINITIONS = {
     defaultState: {
       mode: "idle",
       expression: "neutral",
+      propName: NO_PROP_VALUE,
       speed: 0.2,
+
+      propX: 0,
+      propY: 0.3,
+      propZ: 0,
+      propScale: 1,
+      propRotX: 0,
+      propRotY: 0,
+      propRotZ: 0,
 
       scale: 0.72,
       wireThickness: 0.024,
@@ -312,7 +359,16 @@ export const AVATAR_DEFINITIONS = {
     defaultState: {
       mode: "idle",
       expression: "neutral",
+      propName: NO_PROP_VALUE,
       speed: 1,
+
+      propX: 0,
+      propY: 0.3,
+      propZ: 0,
+      propScale: 1,
+      propRotX: 0,
+      propRotY: 0,
+      propRotZ: 0,
 
       scale: 0.74,
       wireThickness: 0.03,
@@ -354,7 +410,16 @@ export const AVATAR_DEFINITIONS = {
     defaultState: {
       mode: "idle",
       expression: "neutral",
+      propName: NO_PROP_VALUE,
       speed: 1,
+
+      propX: 0,
+      propY: 0.3,
+      propZ: 0,
+      propScale: 1,
+      propRotX: 0,
+      propRotY: 0,
+      propRotZ: 0,
 
       scale: 0.73,
       bodyWidth: 1,
