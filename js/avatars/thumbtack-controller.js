@@ -241,6 +241,11 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     runtime.voiceTarget = clamp(Number.isFinite(next) ? next : 0, 0, 1);
   }
 
+  function setVoiceViseme(_payload) {
+    // Thumbtack uses voice-activity-driven mouth animation;
+    // viseme-specific shaping is not yet implemented for this engine.
+  }
+
   function dispose() {
     scene.remove(avatar.group);
     avatar.dispose();
@@ -253,6 +258,7 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     setState,
     update,
     setVoiceActivity,
+    setVoiceViseme,
     dispose,
     getCatalog() {
       return {
