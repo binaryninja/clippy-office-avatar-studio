@@ -163,8 +163,6 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     rightElbowBase: -0.45,
     baseX: 0,
     baseY: stageTopY,
-    foldSwingX: 0,
-    foldSwingZ: 0,
     leftArmFollow: 0,
     rightArmFollow: 0,
     currentMode: MODE_CHOICES.includes(state.mode) ? state.mode : MODE_CHOICES[0],
@@ -175,23 +173,53 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
   };
 
   function updateMaterials() {
-    avatar.materials.cloth.color.set(state.bodyColor);
-    avatar.materials.cloth.metalness = clamp(state.metalness, 0, 1);
-    avatar.materials.cloth.roughness = clamp(state.roughness, 0, 1);
-    avatar.materials.cloth.clearcoat = clamp(state.clearcoat, 0, 1);
-    avatar.materials.cloth.clearcoatRoughness = clamp(state.clearcoatRoughness, 0, 1);
-    avatar.materials.cloth.emissive.set(state.glowColor);
-    avatar.materials.cloth.emissiveIntensity = clamp(state.glowIntensity * 0.2, 0, 1);
-    avatar.materials.cloth.needsUpdate = true;
+    const clothMaterial = avatar.materials.cloth;
+    const clothUniforms = clothMaterial?.uniforms;
+    const bodyHeight = Math.max(0.001, avatar.metrics.bodyHeight || avatar.metrics.bodyTopY - avatar.metrics.bodyBottomY);
 
-    avatar.materials.fold.color.set(state.foldColor);
-    avatar.materials.fold.metalness = clamp(state.metalness * 0.2, 0, 1);
-    avatar.materials.fold.roughness = clamp(state.roughness * 0.94, 0, 1);
-    avatar.materials.fold.clearcoat = clamp(state.clearcoat * 0.7, 0, 1);
-    avatar.materials.fold.clearcoatRoughness = clamp(state.clearcoatRoughness * 0.96, 0, 1);
-    avatar.materials.fold.emissive.set(state.glowColor);
-    avatar.materials.fold.emissiveIntensity = clamp(state.glowIntensity * 0.1, 0, 1);
-    avatar.materials.fold.needsUpdate = true;
+    if (clothMaterial?.isShaderMaterial && clothUniforms) {
+      if (clothUniforms.uColor) {
+        clothUniforms.uColor.value.set(state.bodyColor);
+      }
+      if (clothUniforms.uStripeColor) {
+        clothUniforms.uStripeColor.value.set(state.stripeColor || "#dcdcf2");
+      }
+      if (clothUniforms.uGlowColor) {
+        clothUniforms.uGlowColor.value.set(state.glowColor);
+      }
+      if (clothUniforms.uGlowIntensity) {
+        clothUniforms.uGlowIntensity.value = clamp(state.glowIntensity * 0.2, 0, 1);
+      }
+      if (clothUniforms.uFuzziness) {
+        clothUniforms.uFuzziness.value = clamp(state.fuzziness ?? 35 + state.roughness * 65, 0, 100);
+      }
+      if (clothUniforms.uLoopScale) {
+        clothUniforms.uLoopScale.value = clamp(state.loopScale ?? 42 + state.bodyDepth * 8, 10, 100);
+      }
+      if (clothUniforms.uStripeWidth) {
+        clothUniforms.uStripeWidth.value = clamp(30 + state.clearcoat * 28, 0, 100);
+      }
+      if (clothUniforms.uStripeOffset) {
+        clothUniforms.uStripeOffset.value = clamp(state.stripeOffset / bodyHeight, -0.35, 0.35);
+      }
+      if (clothUniforms.uSpecularStrength) {
+        clothUniforms.uSpecularStrength.value = clamp(
+          0.09 + (1 - state.roughness) * 0.18 + state.clearcoat * 0.1 + state.metalness * 0.08,
+          0.03,
+          0.5,
+        );
+      }
+      clothMaterial.needsUpdate = true;
+    } else {
+      clothMaterial.color.set(state.bodyColor);
+      clothMaterial.metalness = clamp(state.metalness, 0, 1);
+      clothMaterial.roughness = clamp(state.roughness, 0, 1);
+      clothMaterial.clearcoat = clamp(state.clearcoat, 0, 1);
+      clothMaterial.clearcoatRoughness = clamp(state.clearcoatRoughness, 0, 1);
+      clothMaterial.emissive.set(state.glowColor);
+      clothMaterial.emissiveIntensity = clamp(state.glowIntensity * 0.2, 0, 1);
+      clothMaterial.needsUpdate = true;
+    }
 
     avatar.materials.stripe.color.set(state.stripeColor);
     avatar.materials.stripe.emissive.set(state.glowColor);
@@ -221,13 +249,20 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
 
     avatar.group.scale.setScalar(state.scale);
     avatar.bodyRoot.scale.set(state.bodyWidth, state.bodyHeight, state.bodyDepth);
-    avatar.faceRoot.position.set(0, 0.2 + state.faceY, 0.19 + state.faceZ);
-    avatar.foldMesh.position.y = state.foldHeight;
+    avatar.faceRoot.position.set(0, 0.2 + state.faceY, 0.21 + state.faceZ);
 
-    avatar.stripes[0].position.y = 1.6 + state.stripeOffset;
-    avatar.stripes[1].position.y = 1.39 + state.stripeOffset;
-    avatar.stripes[2].position.y = -1.92 - state.stripeOffset * 0.45;
-    avatar.stripes[3].position.y = -2.15 - state.stripeOffset * 0.45;
+    const clothUniforms = avatar.materials.cloth?.uniforms;
+    const bodyHeight = Math.max(0.001, avatar.metrics.bodyHeight || avatar.metrics.bodyTopY - avatar.metrics.bodyBottomY);
+    if (clothUniforms?.uStripeOffset) {
+      clothUniforms.uStripeOffset.value = clamp(state.stripeOffset / bodyHeight, -0.35, 0.35);
+    }
+
+    if (avatar.stripes.length >= 4) {
+      avatar.stripes[0].position.y = 1.6 + state.stripeOffset;
+      avatar.stripes[1].position.y = 1.39 + state.stripeOffset;
+      avatar.stripes[2].position.y = -1.92 - state.stripeOffset * 0.45;
+      avatar.stripes[3].position.y = -2.15 - state.stripeOffset * 0.45;
+    }
 
     const eyeScale = clamp(state.eyeScale * expr.eyeScale, 0.5, 2.2);
     runtime.eyeScale = eyeScale;
@@ -308,6 +343,9 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
   function applyAnimationFrame(dt) {
     runtime.elapsed += dt;
     runtime.blinkTimer += dt;
+    if (avatar.materials.cloth?.uniforms?.uTime) {
+      avatar.materials.cloth.uniforms.uTime.value = runtime.elapsed;
+    }
 
     const t = runtime.elapsed;
     runtime.modeBlend = Math.min(1, runtime.modeBlend + dt / 0.24);
@@ -331,11 +369,6 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     avatar.faceRoot.rotation.z = pose.bodyTiltZ * 0.34;
 
     const followSmoothing = Math.min(1, dt * 7.4);
-    runtime.foldSwingX += (pose.bodyTiltX * 0.42 - runtime.foldSwingX) * followSmoothing;
-    runtime.foldSwingZ += (pose.bodyTiltZ * -0.36 + pose.sway * 0.48 - runtime.foldSwingZ) * followSmoothing;
-    avatar.foldMesh.rotation.x = runtime.foldSwingX + Math.sin(t * 2.4) * 0.01;
-    avatar.foldMesh.rotation.z = runtime.foldSwingZ;
-
     runtime.leftArmFollow +=
       (pose.leftShoulder * 0.25 + pose.bodyTiltZ * 0.16 - runtime.leftArmFollow) * followSmoothing;
     runtime.rightArmFollow +=

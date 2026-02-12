@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terry Cloth Towel Shader</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    background: #0a0a0f;
+    color: #e0e0e0;
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+    height: 100vh;
+  }
+  
+  #canvas-container {
+    width: 100%;
+    height: 100vh;
+    position: relative;
+  }
+  
+  canvas { display: block; }
+  
+  .controls {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    background: rgba(10, 10, 20, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(120, 140, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 24px;
+    z-index: 10;
+  }
+  
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .control-group label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: rgba(160, 170, 255, 0.7);
+  }
+  
+  .control-group input[type="range"] {
+    width: 120px;
+    accent-color: #7b8cff;
+  }
+  
+  .control-group input[type="color"] {
+    width: 36px;
+    height: 24px;
+    border: 1px solid rgba(120, 140, 255, 0.3);
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+  }
+  
+  .title-bar {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 10;
+    pointer-events: none;
+  }
+  
+  .title-bar h1 {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(160, 170, 255, 0.6);
+  }
+  
+  .title-bar p {
+    font-size: 10px;
+    color: rgba(160, 170, 255, 0.35);
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
+
+  .shape-btns {
+    display: flex;
+    gap: 6px;
+  }
+  .shape-btn {
+    background: rgba(120, 140, 255, 0.1);
+    border: 1px solid rgba(120, 140, 255, 0.25);
+    color: rgba(180, 190, 255, 0.8);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 10px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .shape-btn:hover, .shape-btn.active {
+    background: rgba(120, 140, 255, 0.25);
+    border-color: rgba(120, 140, 255, 0.5);
+    color: #fff;
+  }
+</style>
+</head>
+<body>
+
+<div class="title-bar">
+  <h1>Terry Cloth Shader</h1>
+  <p>Drag to rotate &middot; Scroll to zoom</p>
+</div>
+
+<div id="canvas-container"></div>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Color</label>
+    <input type="color" id="towelColor" value="#8090cc">
+  </div>
+  <div class="control-group">
+    <label>Fuzz</label>
+    <input type="range" id="fuzziness" min="0" max="100" value="65">
+  </div>
+  <div class="control-group">
+    <label>Loop Size</label>
+    <input type="range" id="loopScale" min="10" max="100" value="45">
+  </div>
+  <div class="control-group">
+    <label>Stripe Width</label>
+    <input type="range" id="stripeWidth" min="0" max="100" value="40">
+  </div>
+  <div class="control-group">
+    <label>Shape</label>
+    <div class="shape-btns">
+      <button class="shape-btn active" data-shape="flat">Flat</button>
+      <button class="shape-btn" data-shape="towelie">Towelie</button>
+      <button class="shape-btn" data-shape="cylinder">Tube</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ── Scene setup ──
+const container = document.getElementById('canvas-container');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a24);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 4);
+
+// ── Lights ──
+const ambientLight = new THREE.AmbientLight(0x404060, 0.4);
+scene.add(ambientLight);
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+keyLight.position.set(3, 4, 5);
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0x8090ff, 0.3);
+fillLight.position.set(-3, 1, 2);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xffc080, 0.25);
+rimLight.position.set(0, -2, -3);
+scene.add(rimLight);
+
+// ── Terry Cloth Shader ──
+const terryVertexShader = `
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vViewDir;
+  
+  uniform float uTime;
+  uniform float uFuzziness;
+  
+  // Simplex-ish noise for vertex displacement
+  vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 permute(vec4 x) { return mod289(((x * 34.0) + 1.0) * x); }
+  vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+  
+  float snoise(vec3 v) {
+    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g = step(x0.yzx, x0.xyz);
+    vec3 l = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = mod289(i);
+    vec4 p = permute(permute(permute(
+      i.z + vec4(0.0, i1.z, i2.z, 1.0))
+      + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+      + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+    float n_ = 0.142857142857;
+    vec3 ns = n_ * D.wyz - D.xzx;
+    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+    vec4 x_ = floor(j * ns.z);
+    vec4 y_ = floor(j - 7.0 * x_);
+    vec4 x = x_ * ns.x + ns.yyyy;
+    vec4 y = y_ * ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+    vec4 s0 = floor(b0) * 2.0 + 1.0;
+    vec4 s1 = floor(b1) * 2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+    vec3 p0 = vec3(a0.xy, h.x);
+    vec3 p1 = vec3(a0.zw, h.y);
+    vec3 p2 = vec3(a1.xy, h.z);
+    vec3 p3 = vec3(a1.zw, h.w);
+    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+    m = m * m;
+    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+  }
+  
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+    
+    // Displace vertices along normal for fuzz effect
+    float fuzzAmt = uFuzziness * 0.008;
+    float noise = snoise(position * 30.0 + uTime * 0.1);
+    float noise2 = snoise(position * 60.0 - uTime * 0.05);
+    float displacement = (noise * 0.6 + noise2 * 0.4) * fuzzAmt;
+    
+    vec3 newPosition = position + normal * displacement;
+    
+    vec4 worldPos = modelMatrix * vec4(newPosition, 1.0);
+    vWorldPos = worldPos.xyz;
+    vViewDir = normalize(cameraPosition - worldPos.xyz);
+    
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+  }
+`;
+
+const terryFragmentShader = `
+  precision highp float;
+  
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vViewDir;
+  
+  uniform vec3 uColor;
+  uniform float uTime;
+  uniform float uFuzziness;
+  uniform float uLoopScale;
+  uniform float uStripeWidth;
+  uniform vec3 uLightPos;
+  
+  // Hash functions for procedural noise
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  
+  float hash(float n) {
+    return fract(sin(n) * 43758.5453);
+  }
+  
+  // Value noise
+  float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+  
+  // FBM (fractal brownian motion) for layered noise
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    vec2 shift = vec2(100.0);
+    mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+    for (int i = 0; i < 6; i++) {
+      v += a * vnoise(p);
+      p = rot * p * 2.0 + shift;
+      a *= 0.5;
+    }
+    return v;
+  }
+  
+  // Terry cloth loop pattern - simulates the tiny loops in terry cloth
+  float terryLoops(vec2 uv, float scale) {
+    vec2 p = uv * scale;
+    vec2 cell = floor(p);
+    vec2 f = fract(p);
+    
+    float minDist = 1.0;
+    
+    // Check neighboring cells for loop centers
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        vec2 neighbor = vec2(float(x), float(y));
+        vec2 point = vec2(
+          hash(cell + neighbor),
+          hash((cell + neighbor) * 1.37)
+        );
+        // Animate slightly for living feel
+        point = 0.5 + 0.4 * sin(point * 6.2831 + uTime * 0.15);
+        vec2 diff = neighbor + point - f;
+        float dist = length(diff);
+        minDist = min(minDist, dist);
+      }
+    }
+    
+    // Create loop-like rings
+    float loop = smoothstep(0.0, 0.15, minDist) * (1.0 - smoothstep(0.15, 0.45, minDist));
+    float center = 1.0 - smoothstep(0.0, 0.2, minDist);
+    
+    return loop * 0.6 + center * 0.4 + (1.0 - minDist) * 0.3;
+  }
+  
+  // Fiber direction noise - simulates random fiber directions
+  float fiberNoise(vec2 uv, float scale) {
+    vec2 p = uv * scale;
+    float angle = hash(floor(p)) * 6.2831;
+    vec2 dir = vec2(cos(angle), sin(angle));
+    vec2 f = fract(p) - 0.5;
+    float fiber = abs(dot(f, dir));
+    return 1.0 - smoothstep(0.0, 0.3, fiber);
+  }
+  
+  void main() {
+    vec2 uv = vUv;
+    float loopSc = uLoopScale;
+    
+    // === TERRY CLOTH TEXTURE LAYERS ===
+    
+    // Layer 1: Base terry loops (the characteristic texture)
+    float loops1 = terryLoops(uv, loopSc);
+    float loops2 = terryLoops(uv + 0.33, loopSc * 1.5);
+    float loops3 = terryLoops(uv * 1.1 + 0.67, loopSc * 0.7);
+    float loopPattern = loops1 * 0.5 + loops2 * 0.3 + loops3 * 0.2;
+    
+    // Layer 2: Fiber direction variation
+    float fibers1 = fiberNoise(uv, loopSc * 2.0);
+    float fibers2 = fiberNoise(uv + 0.5, loopSc * 3.0);
+    float fiberPattern = fibers1 * 0.6 + fibers2 * 0.4;
+    
+    // Layer 3: Large-scale fabric variation (folds, compression)
+    float fabricVar = fbm(uv * 4.0 + uTime * 0.02);
+    
+    // Layer 4: Fine grain noise (individual fiber fuzz)
+    float grain = vnoise(uv * loopSc * 8.0);
+    float fineGrain = vnoise(uv * loopSc * 16.0);
+    
+    // Combine texture layers
+    float fuzz = uFuzziness / 100.0;
+    float texture = loopPattern * 0.4 
+                  + fiberPattern * 0.2 * fuzz
+                  + fabricVar * 0.15 
+                  + grain * 0.15 * fuzz
+                  + fineGrain * 0.1 * fuzz;
+    
+    // === STRIPE PATTERN (like Towelie's white stripes) ===
+    float stripeW = uStripeWidth / 100.0;
+    float stripePos1 = smoothstep(0.18 - stripeW * 0.06, 0.20 - stripeW * 0.04, uv.y) 
+                     * (1.0 - smoothstep(0.22 + stripeW * 0.04, 0.24 + stripeW * 0.06, uv.y));
+    float stripePos2 = smoothstep(0.26 - stripeW * 0.04, 0.28 - stripeW * 0.02, uv.y) 
+                     * (1.0 - smoothstep(0.30 + stripeW * 0.02, 0.32 + stripeW * 0.04, uv.y));
+    float stripePos3 = smoothstep(0.68 - stripeW * 0.06, 0.70 - stripeW * 0.04, uv.y) 
+                     * (1.0 - smoothstep(0.72 + stripeW * 0.04, 0.74 + stripeW * 0.06, uv.y));
+    float stripePos4 = smoothstep(0.76 - stripeW * 0.04, 0.78 - stripeW * 0.02, uv.y) 
+                     * (1.0 - smoothstep(0.80 + stripeW * 0.02, 0.82 + stripeW * 0.04, uv.y));
+    
+    float stripe = max(max(stripePos1, stripePos2), max(stripePos3, stripePos4));
+    // Stripes have their own terry texture
+    float stripeTexture = terryLoops(uv + 0.15, loopSc * 0.9) * 0.3 + 0.7;
+    stripe *= stripeTexture;
+    
+    // === COLOR ===
+    vec3 baseColor = uColor;
+    // Add subtle color variation across the fabric
+    vec3 colorVar = baseColor * (0.85 + 0.3 * texture);
+    // Darken in the loop valleys, lighten on peaks
+    colorVar *= (0.8 + 0.4 * loopPattern);
+    
+    // White stripe color with slight texture
+    vec3 stripeColor = vec3(0.92, 0.93, 0.95) * (0.85 + 0.15 * stripeTexture);
+    
+    // Mix base and stripe
+    vec3 color = mix(colorVar, stripeColor, stripe * 0.85);
+    
+    // === LIGHTING ===
+    vec3 normal = normalize(vNormal);
+    
+    // Perturb normal based on texture for that fuzzy look
+    float bumpStrength = 0.3 * fuzz;
+    float dx = terryLoops(uv + vec2(0.001, 0.0), loopSc) - terryLoops(uv - vec2(0.001, 0.0), loopSc);
+    float dy = terryLoops(uv + vec2(0.0, 0.001), loopSc) - terryLoops(uv - vec2(0.0, 0.001), loopSc);
+    normal = normalize(normal + vec3(dx, dy, 0.0) * bumpStrength * 50.0);
+    
+    vec3 lightDir = normalize(uLightPos - vWorldPos);
+    vec3 viewDir = normalize(vViewDir);
+    vec3 halfDir = normalize(lightDir + viewDir);
+    
+    // Diffuse - wrap lighting for soft fabric look
+    float NdotL = dot(normal, lightDir);
+    float diffuse = max(0.0, NdotL * 0.5 + 0.5); // Half-Lambert wrap
+    diffuse = pow(diffuse, 0.8); // Soften
+    
+    // Very subtle specular (fabric doesn't shine much)
+    float spec = pow(max(dot(normal, halfDir), 0.0), 8.0) * 0.08;
+    // Reduce spec on fuzzy areas
+    spec *= (1.0 - fuzz * 0.7);
+    
+    // Fresnel rim - fabric catches light at grazing angles
+    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
+    vec3 rimColor = mix(color, vec3(1.0), 0.3) * fresnel * 0.2;
+    
+    // Ambient occlusion from loop pattern
+    float ao = 0.7 + 0.3 * loopPattern;
+    
+    // === FINAL COMPOSITE ===
+    vec3 ambient = color * 0.25 * ao;
+    vec3 diff = color * diffuse * 0.75;
+    vec3 specular = vec3(spec);
+    
+    vec3 final = ambient + diff + specular + rimColor;
+    
+    // Add very subtle grain for that textile feel
+    final += (fineGrain - 0.5) * 0.03 * fuzz;
+    
+    // Tone mapping
+    final = final / (final + vec3(1.0));
+    final = pow(final, vec3(1.0 / 2.2));
+    
+    gl_FragColor = vec4(final, 1.0);
+  }
+`;
+
+// ── Create material ──
+const uniforms = {
+  uColor: { value: new THREE.Color(0x8090cc) },
+  uTime: { value: 0 },
+  uFuzziness: { value: 65.0 },
+  uLoopScale: { value: 45.0 },
+  uStripeWidth: { value: 40.0 },
+  uLightPos: { value: new THREE.Vector3(3, 4, 5) },
+};
+
+const terryMaterial = new THREE.ShaderMaterial({
+  vertexShader: terryVertexShader,
+  fragmentShader: terryFragmentShader,
+  uniforms,
+  side: THREE.DoubleSide,
+});
+
+// ── Geometries ──
+let currentMesh;
+
+function smoothstepJS(edge0, edge1, x) {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function createTowelieShape() {
+  // Tall towel shape with asymmetric flop curl at top, like the character
+  const geom = new THREE.PlaneGeometry(2.2, 3.2, 128, 192);
+  
+  const pos = geom.attributes.position;
+  const uv = geom.attributes.uv;
+  const halfH = 1.6;
+  
+  for (let i = 0; i < pos.count; i++) {
+    const uvY = uv.getY(i);
+    const uvX = uv.getX(i);
+    let x = pos.getX(i);
+    let y = pos.getY(i);
+    let z = pos.getZ(i);
+    
+    // --- Top curl (Towelie flop - left side curls more) ---
+    const curlStart = 0.75;
+    if (uvY > curlStart) {
+      const t = (uvY - curlStart) / (1.0 - curlStart);
+      
+      // Asymmetric: left side flops over more
+      const asymX = 1.0 + 0.6 * (1.0 - uvX);
+      
+      const angle = t * Math.PI * 0.55 * asymX;
+      const curlStartY = -halfH + curlStart * 2 * halfH;
+      const arcLen = y - curlStartY;
+      const maxArc = halfH * 2 * (1.0 - curlStart);
+      const normalizedArc = arcLen / maxArc;
+      
+      const radius = 0.6;
+      const newY = curlStartY + Math.cos(angle) * radius * normalizedArc;
+      const newZ = Math.sin(angle) * radius * normalizedArc;
+      
+      // Left side shifts outward for flop
+      const sideShift = t * t * (1.0 - uvX) * 0.15;
+      
+      const blend = smoothstepJS(curlStart, curlStart + 0.03, uvY);
+      pos.setY(i, y * (1.0 - blend) + newY * blend);
+      pos.setZ(i, z * (1.0 - blend) + (newZ + 0.05) * blend);
+      pos.setX(i, x - sideShift * blend);
+    }
+    
+    // --- Slight body curve (towels aren't perfectly flat) ---
+    const bodyCurve = Math.sin(uvX * Math.PI) * 0.08;
+    pos.setZ(i, pos.getZ(i) + bodyCurve);
+    
+    // --- Subtle bottom pinch ---
+    if (uvY < 0.1) {
+      const t2 = 1.0 - uvY / 0.1;
+      const pinch = t2 * 0.05;
+      pos.setZ(i, pos.getZ(i) - pinch);
+    }
+  }
+  
+  pos.needsUpdate = true;
+  geom.computeVertexNormals();
+  return geom;
+}
+
+function createShape(type) {
+  if (currentMesh) scene.remove(currentMesh);
+  
+  let geom;
+  switch (type) {
+    case 'flat': {
+      // Flat plane with a symmetric curl at the top
+      geom = new THREE.PlaneGeometry(3, 2.2, 128, 128);
+      const pos = geom.attributes.position;
+      const uv = geom.attributes.uv;
+      const halfH = 1.1;
+      
+      for (let i = 0; i < pos.count; i++) {
+        const uvY = uv.getY(i);
+        let y = pos.getY(i);
+        let z = pos.getZ(i);
+        
+        const curlStart = 0.78;
+        if (uvY > curlStart) {
+          const t = (uvY - curlStart) / (1.0 - curlStart);
+          const angle = t * Math.PI * 0.5;
+          const curlStartY = -halfH + curlStart * 2 * halfH;
+          const arcLen = y - curlStartY;
+          const maxArc = halfH * 2 * (1.0 - curlStart);
+          const normalizedArc = arcLen / maxArc;
+          
+          const radius = 0.5;
+          const newY = curlStartY + Math.cos(angle) * radius * normalizedArc;
+          const newZ = Math.sin(angle) * radius * normalizedArc;
+          
+          const blend = smoothstepJS(curlStart, curlStart + 0.03, uvY);
+          pos.setY(i, y * (1.0 - blend) + newY * blend);
+          pos.setZ(i, z * (1.0 - blend) + newZ * blend);
+        }
+      }
+      pos.needsUpdate = true;
+      geom.computeVertexNormals();
+      break;
+    }
+    case 'towelie':
+      geom = createTowelieShape();
+      break;
+    case 'cylinder':
+      geom = new THREE.CylinderGeometry(0.8, 0.8, 2.4, 64, 64, true);
+      break;
+    case 'sphere':
+      geom = new THREE.SphereGeometry(1.2, 128, 128);
+      break;
+  }
+  
+  currentMesh = new THREE.Mesh(geom, terryMaterial);
+  scene.add(currentMesh);
+}
+
+createShape('towelie');
+
+// Set the active button to towelie
+document.querySelector('.shape-btn.active').classList.remove('active');
+document.querySelector('[data-shape="towelie"]').classList.add('active');
+
+// ── Orbit controls (manual) ──
+let isDragging = false;
+let prevMouse = { x: 0, y: 0 };
+let rotation = { x: -0.15, y: 0.3 };
+let targetRotation = { x: -0.15, y: 0.3 };
+let zoom = 4.5;
+let targetZoom = 4.5;
+
+renderer.domElement.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  prevMouse = { x: e.clientX, y: e.clientY };
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  const dx = e.clientX - prevMouse.x;
+  const dy = e.clientY - prevMouse.y;
+  targetRotation.y += dx * 0.005;
+  targetRotation.x += dy * 0.005;
+  targetRotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotation.x));
+  prevMouse = { x: e.clientX, y: e.clientY };
+});
+
+window.addEventListener('mouseup', () => { isDragging = false; });
+
+renderer.domElement.addEventListener('wheel', (e) => {
+  targetZoom += e.deltaY * 0.003;
+  targetZoom = Math.max(1.5, Math.min(8, targetZoom));
+});
+
+// Touch support
+renderer.domElement.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 1) {
+    isDragging = true;
+    prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+});
+renderer.domElement.addEventListener('touchmove', (e) => {
+  if (!isDragging || e.touches.length !== 1) return;
+  const dx = e.touches[0].clientX - prevMouse.x;
+  const dy = e.touches[0].clientY - prevMouse.y;
+  targetRotation.y += dx * 0.005;
+  targetRotation.x += dy * 0.005;
+  prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+});
+renderer.domElement.addEventListener('touchend', () => { isDragging = false; });
+
+// ── UI Controls ──
+document.getElementById('towelColor').addEventListener('input', (e) => {
+  uniforms.uColor.value.set(e.target.value);
+});
+
+document.getElementById('fuzziness').addEventListener('input', (e) => {
+  uniforms.uFuzziness.value = parseFloat(e.target.value);
+});
+
+document.getElementById('loopScale').addEventListener('input', (e) => {
+  uniforms.uLoopScale.value = parseFloat(e.target.value);
+});
+
+document.getElementById('stripeWidth').addEventListener('input', (e) => {
+  uniforms.uStripeWidth.value = parseFloat(e.target.value);
+});
+
+document.querySelectorAll('.shape-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    createShape(btn.dataset.shape);
+  });
+});
+
+// ── Animate ──
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  
+  const elapsed = clock.getElapsedTime();
+  uniforms.uTime.value = elapsed;
+  
+  // Smooth camera
+  rotation.x += (targetRotation.x - rotation.x) * 0.08;
+  rotation.y += (targetRotation.y - rotation.y) * 0.08;
+  zoom += (targetZoom - zoom) * 0.08;
+  
+  camera.position.x = Math.sin(rotation.y) * Math.cos(rotation.x) * zoom;
+  camera.position.y = Math.sin(rotation.x) * zoom;
+  camera.position.z = Math.cos(rotation.y) * Math.cos(rotation.x) * zoom;
+  camera.lookAt(0, 0, 0);
+  
+  // Gentle idle rotation
+  if (!isDragging) {
+    targetRotation.y += 0.001;
+  }
+  
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// ── Resize ──
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

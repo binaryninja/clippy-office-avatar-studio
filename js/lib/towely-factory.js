@@ -1,90 +1,315 @@
 import { clamp } from "./utils.js";
 
+const BODY_WIDTH = 2.3;
 const BODY_DEPTH = 0.34;
-const FOLD_DEPTH = 0.08;
 const BODY_TOP_Y = 2.42;
 const BODY_BOTTOM_Y = -2.42;
+const BODY_HEIGHT = BODY_TOP_Y - BODY_BOTTOM_Y;
 const LEG_TOP_Y = -2.58;
 const SHOE_RADIUS = 0.19;
 
-function createBodyGeometry(THREE) {
-  const shape = new THREE.Shape();
-  shape.moveTo(-1.25, 2.28);
-  shape.quadraticCurveTo(0, 2.62, 1.25, 2.28);
-  shape.lineTo(1.04, -2.16);
-  shape.quadraticCurveTo(0, -2.55, -1.04, -2.16);
-  shape.closePath();
+const TERRY_VERTEX_SHADER = `
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vViewDir;
 
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: BODY_DEPTH,
-    bevelEnabled: true,
-    bevelSegments: 4,
-    bevelSize: 0.045,
-    bevelThickness: 0.05,
-    curveSegments: 40,
-    steps: 1,
-  });
+  uniform float uTime;
+  uniform float uFuzziness;
 
-  geometry.translate(0, 0, -BODY_DEPTH * 0.5);
-  geometry.computeVertexNormals();
-  return geometry;
-}
+  vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 permute(vec4 x) { return mod289(((x * 34.0) + 1.0) * x); }
+  vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
 
-function createFoldGeometry(THREE) {
-  const shape = new THREE.Shape();
-  shape.moveTo(-1.25, 2.27);
-  shape.quadraticCurveTo(0, 2.56, 1.25, 2.27);
-  shape.lineTo(1.18, 1.86);
-  shape.quadraticCurveTo(0, 2.1, -1.18, 1.86);
-  shape.closePath();
-
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: FOLD_DEPTH,
-    bevelEnabled: false,
-    curveSegments: 32,
-    steps: 1,
-  });
-
-  geometry.translate(0, 0, BODY_DEPTH * 0.33);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-function createStripeGeometry(THREE, width, height) {
-  const halfW = width * 0.5;
-  const halfH = height * 0.5;
-  const radius = Math.min(height * 0.45, width * 0.12);
-  const stripeDepth = 0.012;
-
-  const shape = new THREE.Shape();
-  shape.moveTo(-halfW + radius, -halfH);
-  shape.lineTo(halfW - radius, -halfH);
-  shape.absarc(halfW - radius, -halfH + radius, radius, -Math.PI * 0.5, 0, false);
-  shape.lineTo(halfW, halfH - radius);
-  shape.absarc(halfW - radius, halfH - radius, radius, 0, Math.PI * 0.5, false);
-  shape.lineTo(-halfW + radius, halfH);
-  shape.absarc(-halfW + radius, halfH - radius, radius, Math.PI * 0.5, Math.PI, false);
-  shape.lineTo(-halfW, -halfH + radius);
-  shape.absarc(-halfW + radius, -halfH + radius, radius, Math.PI, Math.PI * 1.5, false);
-
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: stripeDepth,
-    bevelEnabled: true,
-    bevelSegments: 2,
-    bevelSize: 0.005,
-    bevelThickness: 0.005,
-    curveSegments: 14,
-    steps: 1,
-  });
-
-  const positions = geometry.attributes.position;
-  for (let index = 0; index < positions.count; index += 1) {
-    const x = positions.getX(index);
-    const edgeFactor = Math.min(1, Math.abs(x / halfW));
-    positions.setZ(index, positions.getZ(index) - edgeFactor * edgeFactor * 0.007);
+  float snoise(vec3 v) {
+    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g = step(x0.yzx, x0.xyz);
+    vec3 l = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = mod289(i);
+    vec4 p = permute(permute(permute(
+      i.z + vec4(0.0, i1.z, i2.z, 1.0))
+      + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+      + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+    float n_ = 0.142857142857;
+    vec3 ns = n_ * D.wyz - D.xzx;
+    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+    vec4 x_ = floor(j * ns.z);
+    vec4 y_ = floor(j - 7.0 * x_);
+    vec4 x = x_ * ns.x + ns.yyyy;
+    vec4 y = y_ * ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+    vec4 s0 = floor(b0) * 2.0 + 1.0;
+    vec4 s1 = floor(b1) * 2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+    vec3 p0 = vec3(a0.xy, h.x);
+    vec3 p1 = vec3(a0.zw, h.y);
+    vec3 p2 = vec3(a1.xy, h.z);
+    vec3 p3 = vec3(a1.zw, h.w);
+    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+    m = m * m;
+    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
   }
 
-  geometry.translate(0, 0, -stripeDepth * 0.5);
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+
+    float fuzzAmt = uFuzziness * 0.008;
+    float noise = snoise(position * 30.0 + uTime * 0.1);
+    float noise2 = snoise(position * 60.0 - uTime * 0.05);
+    float displacement = (noise * 0.6 + noise2 * 0.4) * fuzzAmt;
+
+    vec3 newPosition = position + normal * displacement;
+
+    vec4 worldPos = modelMatrix * vec4(newPosition, 1.0);
+    vWorldPos = worldPos.xyz;
+    vViewDir = normalize(cameraPosition - worldPos.xyz);
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+  }
+`;
+
+const TERRY_FRAGMENT_SHADER = `
+  precision highp float;
+
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vViewDir;
+
+  uniform vec3 uColor;
+  uniform vec3 uStripeColor;
+  uniform vec3 uGlowColor;
+  uniform float uGlowIntensity;
+  uniform float uTime;
+  uniform float uFuzziness;
+  uniform float uLoopScale;
+  uniform float uStripeWidth;
+  uniform float uStripeOffset;
+  uniform float uSpecularStrength;
+  uniform vec3 uLightPos;
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  float hash(float n) {
+    return fract(sin(n) * 43758.5453);
+  }
+
+  float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    vec2 shift = vec2(100.0);
+    mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+    for (int i = 0; i < 6; i++) {
+      v += a * vnoise(p);
+      p = rot * p * 2.0 + shift;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  float terryLoops(vec2 uv, float scale) {
+    vec2 p = uv * scale;
+    vec2 cell = floor(p);
+    vec2 f = fract(p);
+
+    float minDist = 1.0;
+
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        vec2 neighbor = vec2(float(x), float(y));
+        vec2 point = vec2(
+          hash(cell + neighbor),
+          hash((cell + neighbor) * 1.37)
+        );
+        point = 0.5 + 0.4 * sin(point * 6.2831 + uTime * 0.15);
+        vec2 diff = neighbor + point - f;
+        float dist = length(diff);
+        minDist = min(minDist, dist);
+      }
+    }
+
+    float loop = smoothstep(0.0, 0.15, minDist) * (1.0 - smoothstep(0.15, 0.45, minDist));
+    float center = 1.0 - smoothstep(0.0, 0.2, minDist);
+
+    return loop * 0.6 + center * 0.4 + (1.0 - minDist) * 0.3;
+  }
+
+  float fiberNoise(vec2 uv, float scale) {
+    vec2 p = uv * scale;
+    float angle = hash(floor(p)) * 6.2831;
+    vec2 dir = vec2(cos(angle), sin(angle));
+    vec2 f = fract(p) - 0.5;
+    float fiber = abs(dot(f, dir));
+    return 1.0 - smoothstep(0.0, 0.3, fiber);
+  }
+
+  void main() {
+    vec2 uv = vec2(vUv.x, fract(vUv.y + uStripeOffset));
+    float loopSc = uLoopScale;
+
+    float loops1 = terryLoops(uv, loopSc);
+    float loops2 = terryLoops(uv + 0.33, loopSc * 1.5);
+    float loops3 = terryLoops(uv * 1.1 + 0.67, loopSc * 0.7);
+    float loopPattern = loops1 * 0.5 + loops2 * 0.3 + loops3 * 0.2;
+
+    float fibers1 = fiberNoise(uv, loopSc * 2.0);
+    float fibers2 = fiberNoise(uv + 0.5, loopSc * 3.0);
+    float fiberPattern = fibers1 * 0.6 + fibers2 * 0.4;
+
+    float fabricVar = fbm(uv * 4.0 + uTime * 0.02);
+    float grain = vnoise(uv * loopSc * 8.0);
+    float fineGrain = vnoise(uv * loopSc * 16.0);
+
+    float fuzz = uFuzziness / 100.0;
+    float texture = loopPattern * 0.4
+                  + fiberPattern * 0.2 * fuzz
+                  + fabricVar * 0.15
+                  + grain * 0.15 * fuzz
+                  + fineGrain * 0.1 * fuzz;
+
+    float stripeW = uStripeWidth / 100.0;
+    float stripePos1 = smoothstep(0.18 - stripeW * 0.06, 0.20 - stripeW * 0.04, uv.y)
+                     * (1.0 - smoothstep(0.22 + stripeW * 0.04, 0.24 + stripeW * 0.06, uv.y));
+    float stripePos2 = smoothstep(0.26 - stripeW * 0.04, 0.28 - stripeW * 0.02, uv.y)
+                     * (1.0 - smoothstep(0.30 + stripeW * 0.02, 0.32 + stripeW * 0.04, uv.y));
+    float stripePos3 = smoothstep(0.68 - stripeW * 0.06, 0.70 - stripeW * 0.04, uv.y)
+                     * (1.0 - smoothstep(0.72 + stripeW * 0.04, 0.74 + stripeW * 0.06, uv.y));
+    float stripePos4 = smoothstep(0.76 - stripeW * 0.04, 0.78 - stripeW * 0.02, uv.y)
+                     * (1.0 - smoothstep(0.80 + stripeW * 0.02, 0.82 + stripeW * 0.04, uv.y));
+
+    float stripe = max(max(stripePos1, stripePos2), max(stripePos3, stripePos4));
+    float stripeTexture = terryLoops(uv + 0.15, loopSc * 0.9) * 0.3 + 0.7;
+    stripe *= stripeTexture;
+
+    vec3 baseColor = uColor;
+    vec3 colorVar = baseColor * (0.85 + 0.3 * texture);
+    colorVar *= (0.8 + 0.4 * loopPattern);
+    vec3 stripeColor = uStripeColor * (0.85 + 0.15 * stripeTexture);
+    vec3 color = mix(colorVar, stripeColor, stripe * 0.9);
+
+    vec3 normal = normalize(vNormal);
+
+    float bumpStrength = 0.3 * fuzz;
+    float dx = terryLoops(uv + vec2(0.001, 0.0), loopSc) - terryLoops(uv - vec2(0.001, 0.0), loopSc);
+    float dy = terryLoops(uv + vec2(0.0, 0.001), loopSc) - terryLoops(uv - vec2(0.0, 0.001), loopSc);
+    normal = normalize(normal + vec3(dx, dy, 0.0) * bumpStrength * 50.0);
+
+    vec3 lightDir = normalize(uLightPos - vWorldPos);
+    vec3 viewDir = normalize(vViewDir);
+    vec3 halfDir = normalize(lightDir + viewDir);
+
+    float NdotL = dot(normal, lightDir);
+    float diffuse = max(0.0, NdotL * 0.5 + 0.5);
+    diffuse = pow(diffuse, 0.8);
+
+    float spec = pow(max(dot(normal, halfDir), 0.0), 8.0) * uSpecularStrength;
+    spec *= (1.0 - fuzz * 0.65);
+
+    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
+    vec3 rimColor = mix(color, vec3(1.0), 0.3) * fresnel * 0.22;
+
+    float ao = 0.7 + 0.3 * loopPattern;
+    vec3 ambient = color * 0.25 * ao;
+    vec3 diff = color * diffuse * 0.75;
+    vec3 specular = vec3(spec);
+
+    vec3 final = ambient + diff + specular + rimColor;
+    final += (fineGrain - 0.5) * 0.03 * fuzz;
+
+    float stripeMask = smoothstep(0.24, 0.78, uv.y) * (1.0 - smoothstep(0.78, 0.92, uv.y));
+    final += uGlowColor * uGlowIntensity * (0.12 + fresnel * 0.2 + stripe * 0.16 + stripeMask * 0.06);
+
+    final = final / (final + vec3(1.0));
+    final = pow(final, vec3(1.0 / 2.2));
+
+    gl_FragColor = vec4(final, 1.0);
+  }
+`;
+
+function smoothstepJS(edge0, edge1, x) {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function createBodyGeometry(THREE) {
+  const geometry = new THREE.PlaneGeometry(BODY_WIDTH, BODY_HEIGHT, 128, 192);
+  const positions = geometry.attributes.position;
+  const uv = geometry.attributes.uv;
+
+  const curlStart = 0.75;
+  const curlRadius = 0.62;
+
+  for (let i = 0; i < positions.count; i += 1) {
+    const uvX = uv.getX(i);
+    const uvY = uv.getY(i);
+
+    let x = positions.getX(i);
+    let y = positions.getY(i);
+    let z = positions.getZ(i);
+
+    if (uvY > curlStart) {
+      const t = (uvY - curlStart) / (1 - curlStart);
+      const asymX = 1 + 0.6 * (1 - uvX);
+      const angle = t * Math.PI * 0.55 * asymX;
+      const curlStartY = BODY_BOTTOM_Y + curlStart * BODY_HEIGHT;
+      const arcLen = y - curlStartY;
+      const maxArc = BODY_HEIGHT * (1 - curlStart);
+      const normalizedArc = maxArc > 0 ? arcLen / maxArc : 0;
+
+      const newY = curlStartY + Math.cos(angle) * curlRadius * normalizedArc;
+      const newZ = Math.sin(angle) * curlRadius * normalizedArc;
+      const sideShift = t * t * (1 - uvX) * 0.15;
+
+      const blend = smoothstepJS(curlStart, curlStart + 0.03, uvY);
+      y = y * (1 - blend) + newY * blend;
+      z = z * (1 - blend) + (newZ + 0.05) * blend;
+      x -= sideShift * blend;
+    }
+
+    const bodyCurve = Math.sin(uvX * Math.PI) * 0.08;
+    z += bodyCurve;
+
+    if (uvY < 0.1) {
+      const t = 1 - uvY / 0.1;
+      z -= t * 0.05;
+    }
+
+    // Keep Towely's face on +Z while pushing the fabric curl to the back side.
+    positions.setXYZ(i, x, y, -z);
+  }
+
+  positions.needsUpdate = true;
   geometry.computeVertexNormals();
   return geometry;
 }
@@ -92,13 +317,6 @@ function createStripeGeometry(THREE, width, height) {
 function configureShadow(mesh, { cast = true, receive = true } = {}) {
   mesh.castShadow = cast;
   mesh.receiveShadow = receive;
-}
-
-function createStripe(THREE, material, y, width = 2.2, height = 0.07) {
-  const stripe = new THREE.Mesh(createStripeGeometry(THREE, width, height), material);
-  stripe.position.set(0, y, BODY_DEPTH * 0.56);
-  configureShadow(stripe, { cast: false, receive: false });
-  return stripe;
 }
 
 function createArm(THREE, material) {
@@ -191,6 +409,40 @@ function createFabricMaps(THREE) {
   };
 }
 
+function createTerryMaterial(THREE, currentState) {
+  const roughness = clamp(currentState.roughness ?? 0.62, 0, 1);
+  const metalness = clamp(currentState.metalness ?? 0.14, 0, 1);
+  const clearcoat = clamp(currentState.clearcoat ?? 0.24, 0, 1);
+
+  const uniforms = {
+    uColor: { value: new THREE.Color(currentState.bodyColor || "#8b8fbe") },
+    uStripeColor: { value: new THREE.Color(currentState.stripeColor || "#dcdcf2") },
+    uGlowColor: { value: new THREE.Color(currentState.glowColor || "#4f5da1") },
+    uGlowIntensity: { value: clamp((currentState.glowIntensity ?? 0.1) * 0.2, 0, 1) },
+    uTime: { value: 0 },
+    uFuzziness: { value: clamp(currentState.fuzziness ?? 35 + roughness * 65, 0, 100) },
+    uLoopScale: { value: clamp(currentState.loopScale ?? 42 + (currentState.bodyDepth ?? 1) * 8, 10, 100) },
+    uStripeWidth: { value: clamp(30 + clearcoat * 28, 0, 100) },
+    uStripeOffset: {
+      value: clamp((currentState.stripeOffset ?? 0) / BODY_HEIGHT, -0.35, 0.35),
+    },
+    uSpecularStrength: {
+      value: clamp(0.09 + (1 - roughness) * 0.18 + clearcoat * 0.1 + metalness * 0.08, 0.03, 0.5),
+    },
+    uLightPos: { value: new THREE.Vector3(3.2, 5.8, 4.6) },
+  };
+
+  const material = new THREE.ShaderMaterial({
+    vertexShader: TERRY_VERTEX_SHADER,
+    fragmentShader: TERRY_FRAGMENT_SHADER,
+    uniforms,
+    side: THREE.DoubleSide,
+  });
+
+  material.toneMapped = false;
+  return material;
+}
+
 function disposeObject3D(root) {
   const materialSet = new Set();
 
@@ -244,30 +496,7 @@ export function createTowelyAvatar(THREE, currentState = {}) {
   const generatedTextures = [fabricMaps.roughnessMap, fabricMaps.normalMap];
 
   const materials = {
-    cloth: new THREE.MeshPhysicalMaterial({
-      color: currentState.bodyColor || "#8b8fbe",
-      metalness: clamp(currentState.metalness ?? 0.03, 0, 1),
-      roughness: clamp(currentState.roughness ?? 0.84, 0, 1),
-      roughnessMap: fabricMaps.roughnessMap,
-      clearcoat: clamp(currentState.clearcoat ?? 0.07, 0, 1),
-      clearcoatRoughness: clamp(currentState.clearcoatRoughness ?? 0.8, 0, 1),
-      normalMap: fabricMaps.normalMap,
-      normalScale: new THREE.Vector2(0.2, 0.26),
-      emissive: new THREE.Color(currentState.glowColor || "#2f3048"),
-      emissiveIntensity: clamp((currentState.glowIntensity ?? 0.08) * 0.2, 0, 1),
-    }),
-    fold: new THREE.MeshPhysicalMaterial({
-      color: currentState.foldColor || "#7e83b3",
-      metalness: clamp((currentState.metalness ?? 0.03) * 0.2, 0, 1),
-      roughness: clamp((currentState.roughness ?? 0.84) * 0.94, 0, 1),
-      roughnessMap: fabricMaps.roughnessMap,
-      clearcoat: clamp((currentState.clearcoat ?? 0.07) * 0.7, 0, 1),
-      clearcoatRoughness: clamp((currentState.clearcoatRoughness ?? 0.8) * 0.96, 0, 1),
-      normalMap: fabricMaps.normalMap,
-      normalScale: new THREE.Vector2(0.16, 0.2),
-      emissive: new THREE.Color(currentState.glowColor || "#2f3048"),
-      emissiveIntensity: clamp((currentState.glowIntensity ?? 0.08) * 0.1, 0, 1),
-    }),
+    cloth: createTerryMaterial(THREE, currentState),
     stripe: new THREE.MeshStandardMaterial({
       color: currentState.stripeColor || "#d9dcf2",
       metalness: 0.01,
@@ -324,19 +553,9 @@ export function createTowelyAvatar(THREE, currentState = {}) {
   configureShadow(bodyMesh);
   bodyShell.add(bodyMesh);
 
-  const foldMesh = new THREE.Mesh(createFoldGeometry(THREE), materials.fold);
-  configureShadow(foldMesh);
-  bodyShell.add(foldMesh);
+  const stripes = [];
 
-  const stripes = [
-    createStripe(THREE, materials.stripe, 1.6, 2.24, 0.08),
-    createStripe(THREE, materials.stripe, 1.39, 2.2, 0.06),
-    createStripe(THREE, materials.stripe, -1.92, 2.26, 0.08),
-    createStripe(THREE, materials.stripe, -2.15, 2.2, 0.06),
-  ];
-  bodyShell.add(...stripes);
-
-  faceRoot.position.set(0, 0.2, BODY_DEPTH * 0.8);
+  faceRoot.position.set(0, 0.2, BODY_DEPTH * 0.67);
 
   const leftEyeRoot = new THREE.Group();
   leftEyeRoot.position.set(-0.2, 0.06, 0.21);
@@ -403,8 +622,8 @@ export function createTowelyAvatar(THREE, currentState = {}) {
     materials,
     bodyRoot,
     bodyShell,
+    bodyMesh,
     faceRoot,
-    foldMesh,
     stripes,
     leftEyeRoot,
     rightEyeRoot,
@@ -429,6 +648,7 @@ export function createTowelyAvatar(THREE, currentState = {}) {
     metrics: {
       bodyTopY: BODY_TOP_Y,
       bodyBottomY: BODY_BOTTOM_Y,
+      bodyHeight: BODY_HEIGHT,
       legTopY: LEG_TOP_Y,
       shoeRadius: SHOE_RADIUS,
     },
