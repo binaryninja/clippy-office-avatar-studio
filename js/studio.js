@@ -10,6 +10,7 @@ import { getEngine } from "./engines.js";
 import "./avatars/clippy-controller.js";
 import "./avatars/thumbtack-controller.js";
 import "./avatars/towely-controller.js";
+import "./avatars/puffball-controller.js";
 import { clamp, randomBetween, randomColor } from "./lib/utils.js";
 import { createRealtimeVoice } from "./lib/realtime-voice.js";
 import { createElevenLabsVoice } from "./lib/elevenlabs-voice.js";
@@ -27,6 +28,11 @@ const btnCopy = document.getElementById("btnCopy");
 const btnApply = document.getElementById("btnApply");
 const btnVoice = document.getElementById("btnVoice");
 const btnElevenVoice = document.getElementById("btnElevenVoice");
+const characterNameEl = document.getElementById("characterName");
+const characterBackgroundEl = document.getElementById("characterBackground");
+const characterPersonalityEl = document.getElementById("characterPersonality");
+const btnSaveCharacter = document.getElementById("btnSaveCharacter");
+const btnResetCharacter = document.getElementById("btnResetCharacter");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -55,6 +61,54 @@ lights.key.shadow.mapSize.set(1024, 1024);
 lights.fill.position.set(-4.4, 2.4, 4.8);
 lights.rim.position.set(-5.1, 1.4, -3.2);
 scene.add(lights.hemi, lights.ambient, lights.key, lights.fill, lights.rim);
+
+const CHARACTER_PROFILE_STORAGE_KEY = "office-avatar-studio:character-profiles:v1";
+const CHARACTER_PROFILE_MAX_LENGTH = 420;
+
+function sanitizeProfileText(value, maxLength = CHARACTER_PROFILE_MAX_LENGTH) {
+  return String(value || "").trim().slice(0, maxLength);
+}
+
+function getDefaultCharacterProfile(avatarId) {
+  const definition = AVATAR_DEFINITIONS[avatarId] || {};
+  const seed = definition.characterProfile || {};
+  return {
+    name: sanitizeProfileText(definition.label || "Office avatar", 80),
+    background: sanitizeProfileText(seed.background),
+    personality: sanitizeProfileText(seed.personality),
+  };
+}
+
+function normalizeCharacterProfile(profile = {}, avatarId = activeAvatarId) {
+  const defaults = getDefaultCharacterProfile(avatarId);
+  return {
+    name: sanitizeProfileText(profile.name, 80) || defaults.name,
+    background: sanitizeProfileText(profile.background),
+    personality: sanitizeProfileText(profile.personality),
+  };
+}
+
+function loadCharacterProfiles() {
+  try {
+    const raw = localStorage.getItem(CHARACTER_PROFILE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    console.warn("Failed to load character profiles", error);
+    return {};
+  }
+}
+
+function persistCharacterProfiles(profileStore) {
+  try {
+    localStorage.setItem(CHARACTER_PROFILE_STORAGE_KEY, JSON.stringify(profileStore));
+    return true;
+  } catch (error) {
+    console.warn("Failed to save character profiles", error);
+    return false;
+  }
+}
 
 const CAROUSEL_SCENE = {
   fogColor: 0x0a1325,
@@ -233,6 +287,8 @@ let activeVoiceProvider = null;
 let devVowelDemoRunId = 0;
 
 const controlRegistry = new Map();
+const characterProfiles = loadCharacterProfiles();
+let profileAutosaveTimer = null;
 
 const pointer = {
   x: 0,
@@ -270,23 +326,79 @@ function setAssistantMouth({ viseme = "sil", strength = 0, level = 0 } = {}) {
   assistantSpeechLevel = clamp(Number(level) || 0, 0, 1);
 }
 
+function getActiveCharacterProfile() {
+  return normalizeCharacterProfile(characterProfiles[activeAvatarId], activeAvatarId);
+}
+
+function syncCharacterProfileInputs() {
+  if (!characterNameEl || !characterBackgroundEl || !characterPersonalityEl) return;
+  const profile = getActiveCharacterProfile();
+  characterNameEl.value = profile.name;
+  characterBackgroundEl.value = profile.background;
+  characterPersonalityEl.value = profile.personality;
+}
+
+function captureCharacterProfileFromInputs() {
+  return normalizeCharacterProfile(
+    {
+      name: characterNameEl?.value,
+      background: characterBackgroundEl?.value,
+      personality: characterPersonalityEl?.value,
+    },
+    activeAvatarId,
+  );
+}
+
+function saveCharacterProfile({ announce = true } = {}) {
+  const profile = captureCharacterProfileFromInputs();
+  characterProfiles[activeAvatarId] = profile;
+  const saved = persistCharacterProfiles(characterProfiles);
+  if (saved && announce) {
+    setStatus(`Saved character: ${profile.name}`, 1800);
+  } else if (!saved && announce) {
+    setStatus("Could not save character", 2300);
+  }
+  return profile;
+}
+
+function queueCharacterProfileAutosave() {
+  if (profileAutosaveTimer) {
+    clearTimeout(profileAutosaveTimer);
+  }
+  profileAutosaveTimer = setTimeout(() => {
+    profileAutosaveTimer = null;
+    saveCharacterProfile({ announce: false });
+  }, 500);
+}
+
 function buildVoiceSessionInstructions() {
   const runtime = getAvatarRuntime();
-  const label = runtime?.definition?.label || "Office avatar";
+  const profile = getActiveCharacterProfile();
+  const fallbackLabel = runtime?.definition?.label || "Office avatar";
+  const displayName = profile.name || fallbackLabel;
   const description = runtime?.definition?.description || "a mascot inside a browser-based 3D avatar studio";
 
-  return [
-    `You are ${label}, ${description}.`,
+  const instructions = [
+    `You are ${displayName}, ${description}.`,
     "You are speaking with the user by realtime voice.",
     "Keep responses short, clear, and conversational unless the user asks for details.",
     "Ask one focused follow-up question when useful.",
-  ].join(" ");
+  ];
+
+  if (profile.background) {
+    instructions.push(`Character background: ${profile.background}.`);
+  }
+
+  if (profile.personality) {
+    instructions.push(`Personality and behavior: ${profile.personality}.`);
+  }
+
+  return instructions.join(" ");
 }
 
 function buildVoiceGreetingInstructions() {
-  const runtime = getAvatarRuntime();
-  const label = runtime?.definition?.label || "the avatar";
-  return `In one short friendly sentence, greet the user as ${label} and ask what they want to work on.`;
+  const profile = getActiveCharacterProfile();
+  return `In one short friendly sentence, greet the user as ${profile.name} and ask what they want to work on.`;
 }
 
 function canConsumeVoice(provider) {
@@ -638,7 +750,12 @@ function syncControlsFromState() {
 
 function publishPresetText() {
   const runtime = getAvatarRuntime();
-  presetJsonEl.value = runtime ? JSON.stringify(runtime.state, null, 2) : "{}";
+  if (!runtime) {
+    presetJsonEl.value = "{}";
+    return;
+  }
+  const preset = { ...runtime.state, characterProfile: getActiveCharacterProfile() };
+  presetJsonEl.value = JSON.stringify(preset, null, 2);
 }
 
 function applyStateToController(force = false) {
@@ -719,6 +836,7 @@ function loadAvatar(avatarId, { instant = false, silent = false } = {}) {
   stageRig.focusAvatar(avatarId, instant);
   buildControls(runtime.definition, runtime.catalog);
   syncControlsFromState();
+  syncCharacterProfileInputs();
   publishPresetText();
   realtimeVoice.syncSessionContext();
   elevenLabsVoice.syncSessionContext();
@@ -775,6 +893,32 @@ function installGlobalHandlers() {
     loadAvatar(avatarSelectEl.value);
   });
 
+  btnSaveCharacter?.addEventListener("click", () => {
+    saveCharacterProfile();
+    realtimeVoice.syncSessionContext();
+    elevenLabsVoice.syncSessionContext();
+  });
+
+  btnResetCharacter?.addEventListener("click", () => {
+    const defaults = getDefaultCharacterProfile(activeAvatarId);
+    characterProfiles[activeAvatarId] = defaults;
+    persistCharacterProfiles(characterProfiles);
+    syncCharacterProfileInputs();
+    realtimeVoice.syncSessionContext();
+    elevenLabsVoice.syncSessionContext();
+    setStatus("Profile reset", 1500);
+  });
+
+  const profileInputHandler = () => {
+    queueCharacterProfileAutosave();
+    realtimeVoice.syncSessionContext();
+    elevenLabsVoice.syncSessionContext();
+  };
+
+  characterNameEl?.addEventListener("input", profileInputHandler);
+  characterBackgroundEl?.addEventListener("input", profileInputHandler);
+  characterPersonalityEl?.addEventListener("input", profileInputHandler);
+
   btnReset.addEventListener("click", () => {
     const runtime = getAvatarRuntime();
     if (!runtime) return;
@@ -812,12 +956,20 @@ function installGlobalHandlers() {
 
     try {
       const parsed = JSON.parse(presetJsonEl.value || "{}");
+      const { characterProfile: incomingProfile, ...stateFields } = parsed;
       runtime.state = sanitizeState(
         runtime.definition,
-        { ...runtime.state, ...parsed },
+        { ...runtime.state, ...stateFields },
         runtime.catalog,
         runtime.definition.defaultState,
       );
+      if (incomingProfile && typeof incomingProfile === "object") {
+        characterProfiles[activeAvatarId] = normalizeCharacterProfile(incomingProfile, activeAvatarId);
+        persistCharacterProfiles(characterProfiles);
+        syncCharacterProfileInputs();
+        realtimeVoice.syncSessionContext();
+        elevenLabsVoice.syncSessionContext();
+      }
       applyStateToController(true);
       setStatus("Preset applied", 1700);
     } catch (err) {
