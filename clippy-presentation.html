@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clippy Excalidraw Presenter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-0: #071523;
+        --bg-1: #0d2638;
+        --bg-2: #1f2f3f;
+        --ink: #ebf5f9;
+        --muted: #9cc0d4;
+        --line: rgba(156, 192, 212, 0.32);
+        --line-soft: rgba(156, 192, 212, 0.2);
+        --panel: rgba(8, 26, 40, 0.88);
+        --surface: rgba(11, 35, 52, 0.78);
+        --accent: #5ed2ff;
+        --accent-2: #ffb347;
+        --danger: #ff6b72;
+        --shadow: 0 20px 56px rgba(3, 12, 20, 0.44);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Rajdhani", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(960px 620px at 16% 10%, rgba(94, 210, 255, 0.18), transparent 56%),
+          radial-gradient(860px 560px at 90% 84%, rgba(255, 179, 71, 0.17), transparent 58%),
+          linear-gradient(142deg, var(--bg-0), var(--bg-1) 56%, var(--bg-2));
+      }
+
+      .layout {
+        height: 100%;
+        padding: 14px;
+        display: grid;
+        gap: 14px;
+        grid-template-columns: minmax(220px, 24%) minmax(820px, 1fr);
+      }
+
+      .stage-shell {
+        min-height: 0;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        overflow: hidden;
+        background: linear-gradient(158deg, rgba(9, 29, 45, 0.94), rgba(8, 19, 31, 0.9));
+        box-shadow: var(--shadow);
+        position: relative;
+      }
+
+      .stage-shell::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          repeating-linear-gradient(
+            0deg,
+            transparent 0,
+            transparent 25px,
+            rgba(94, 210, 255, 0.05) 26px
+          ),
+          repeating-linear-gradient(
+            90deg,
+            transparent 0,
+            transparent 25px,
+            rgba(255, 179, 71, 0.04) 26px
+          );
+      }
+
+      .stage {
+        position: relative;
+        height: 100%;
+      }
+
+      #presenterCanvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .hud {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        right: 14px;
+        display: grid;
+        gap: 10px;
+        pointer-events: none;
+      }
+
+      .headline,
+      .line-bubble {
+        width: fit-content;
+        max-width: min(640px, 100%);
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: rgba(4, 20, 31, 0.76);
+        box-shadow: 0 0 0 1px rgba(94, 210, 255, 0.08);
+        backdrop-filter: blur(10px);
+      }
+
+      .headline {
+        padding: 10px 12px;
+      }
+
+      .headline p {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--accent);
+      }
+
+      .headline h1 {
+        margin: 2px 0 0;
+        line-height: 1.05;
+        font-size: 28px;
+      }
+
+      .line-bubble {
+        padding: 12px 14px;
+      }
+
+      .line-bubble p {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.15;
+      }
+
+      .workbench {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        overflow: hidden;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .toolbar {
+        padding: 10px;
+        display: grid;
+        gap: 10px;
+        border-bottom: 1px solid var(--line-soft);
+        background: rgba(9, 28, 41, 0.96);
+      }
+
+      .toolbar-row {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+      }
+
+      .toolbar-row label {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .toolbar-row input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-family: "Space Mono", "Consolas", monospace;
+        font-size: 13px;
+        color: var(--ink);
+        background: rgba(5, 20, 31, 0.9);
+      }
+
+      .toolbar-row input:focus {
+        outline: 2px solid rgba(94, 210, 255, 0.5);
+        outline-offset: 1px;
+      }
+
+      .toolbar-row input[type="file"] {
+        padding: 6px 8px;
+        font-family: "Rajdhani", sans-serif;
+        color: var(--ink);
+      }
+
+      .toolbar-row input[type="file"]::file-selector-button {
+        margin-right: 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 10px;
+        color: var(--ink);
+        font-family: "Rajdhani", sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        background: linear-gradient(165deg, rgba(16, 48, 69, 0.85), rgba(11, 34, 50, 0.9));
+      }
+
+      .toolbar-actions {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+      }
+
+      button,
+      a.button-link {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: linear-gradient(165deg, rgba(16, 48, 69, 0.85), rgba(11, 34, 50, 0.9));
+        color: var(--ink);
+        font-family: "Rajdhani", sans-serif;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-align: center;
+        cursor: pointer;
+        text-decoration: none;
+        transition:
+          transform 120ms ease,
+          filter 120ms ease;
+      }
+
+      button:hover,
+      a.button-link:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.08);
+      }
+
+      .active {
+        border-color: rgba(255, 179, 71, 0.6);
+        background: linear-gradient(168deg, rgba(92, 56, 18, 0.85), rgba(55, 35, 16, 0.92));
+        color: #ffe9c8;
+      }
+
+      .status {
+        font-size: 14px;
+        color: var(--accent);
+        min-height: 1.2em;
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .workspace {
+        min-height: 0;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(190px, 248px) minmax(620px, 1fr);
+        padding: 10px;
+      }
+
+      .step-panel {
+        min-height: 0;
+        border: 1px solid var(--line-soft);
+        border-radius: 14px;
+        background: var(--surface);
+        padding: 10px;
+        display: grid;
+        grid-template-rows: auto auto auto minmax(120px, auto) auto 1fr;
+        gap: 8px;
+      }
+
+      .step-panel h2 {
+        margin: 0;
+        font-size: 17px;
+      }
+
+      .step-meta {
+        margin: 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .notes-title {
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+      }
+
+      #keyPoints {
+        margin: 0;
+        padding: 0 0 0 16px;
+        display: grid;
+        gap: 6px;
+        overflow: auto;
+      }
+
+      #keyPoints li {
+        font-size: 13px;
+        line-height: 1.25;
+        color: var(--ink);
+      }
+
+      #stepList {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        overflow: auto;
+        display: grid;
+        gap: 6px;
+      }
+
+      #stepList button {
+        width: 100%;
+        text-align: left;
+        font-size: 14px;
+        padding: 9px;
+      }
+
+      #stepList button.current {
+        border-color: rgba(94, 210, 255, 0.7);
+        box-shadow: 0 0 0 1px rgba(94, 210, 255, 0.2);
+      }
+
+      .frame-shell {
+        position: relative;
+        min-height: 0;
+        border: 1px solid var(--line-soft);
+        border-radius: 14px;
+        overflow: hidden;
+        background:
+          radial-gradient(780px 520px at 12% 8%, rgba(94, 210, 255, 0.14), transparent 58%),
+          radial-gradient(640px 460px at 88% 84%, rgba(255, 179, 71, 0.1), transparent 60%),
+          linear-gradient(158deg, rgba(8, 25, 40, 0.98), rgba(7, 20, 33, 0.96));
+      }
+
+      .frame-shell::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.26;
+        background:
+          repeating-linear-gradient(
+            0deg,
+            transparent 0,
+            transparent 22px,
+            rgba(94, 210, 255, 0.06) 23px
+          ),
+          repeating-linear-gradient(
+            90deg,
+            transparent 0,
+            transparent 22px,
+            rgba(94, 210, 255, 0.06) 23px
+          );
+      }
+
+      #boardViewport {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        height: 100%;
+        padding: 2px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      .board-canvas {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        border-radius: 10px;
+        border: 1px solid rgba(94, 210, 255, 0.32);
+        box-shadow:
+          0 0 0 1px rgba(94, 210, 255, 0.14),
+          0 8px 22px rgba(3, 12, 20, 0.56);
+        background: transparent;
+      }
+
+      .board-empty {
+        margin: 0;
+        color: var(--muted);
+        font-family: "Space Mono", "Consolas", monospace;
+        font-size: 13px;
+        text-align: center;
+      }
+
+      @media (max-width: 1100px) {
+        .layout {
+          grid-template-columns: 1fr;
+          grid-template-rows: minmax(300px, 44vh) 1fr;
+        }
+
+        .workspace {
+          grid-template-columns: 1fr;
+          grid-template-rows: minmax(180px, 240px) minmax(360px, 1fr);
+        }
+
+        .toolbar-actions {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="layout">
+      <section class="stage-shell" aria-label="Clippy presentation stage">
+        <div class="stage">
+          <canvas id="presenterCanvas" aria-label="Clippy presenter canvas"></canvas>
+          <div class="hud">
+            <div class="headline">
+              <p>ServiceNow AI Agent Security Review</p>
+              <h1 id="talkTitle">Threat Risk Assessment Demo</h1>
+            </div>
+            <div class="line-bubble">
+              <p id="talkLine">Welcome. I am Clippy, and I will guide this threat and risk walkthrough.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workbench" aria-label="Presentation controls and board">
+        <div class="toolbar">
+          <div class="toolbar-row">
+            <label for="sceneFile">Scene File</label>
+            <input id="sceneFile" type="file" accept=".excalidraw,.json,application/json" />
+            <button type="button" id="btnLoadDemo">Load Demo</button>
+          </div>
+          <div class="toolbar-actions">
+            <button type="button" id="btnPrev">Previous</button>
+            <button type="button" id="btnNext">Next</button>
+            <button type="button" id="btnAutoplay">Autoplay</button>
+            <button type="button" id="btnFit">Fit Scene</button>
+            <a id="openEditor" class="button-link" href="https://excalidraw.com/" target="_blank" rel="noreferrer"
+              >Open Editor</a
+            >
+            <button type="button" id="btnResetLine">Reset Notes</button>
+          </div>
+          <p id="status" class="status" aria-live="polite"></p>
+        </div>
+
+        <div class="workspace">
+          <aside class="step-panel">
+            <h2>Presenter Notes</h2>
+            <p class="step-meta" id="stepMeta">Step 1 of 1</p>
+            <p class="notes-title">Current Slide Key Points</p>
+            <ul id="keyPoints"></ul>
+            <p class="notes-title">Slides</p>
+            <ul id="stepList"></ul>
+          </aside>
+          <div class="frame-shell">
+            <div id="boardViewport" aria-label="Excalidraw scene render">
+              <p class="board-empty">Load a .excalidraw file or use the demo scene.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./js/presentation.js"></script>
+  </body>
+</html>
