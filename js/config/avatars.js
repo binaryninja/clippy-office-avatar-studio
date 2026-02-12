@@ -36,6 +36,18 @@ const clippyFields = [
     ],
   },
   {
+    title: "Prop Placement",
+    fields: [
+      { key: "propX", label: "Prop X", type: "range", min: -1.5, max: 1.5, step: 0.01 },
+      { key: "propY", label: "Prop Y", type: "range", min: -1.5, max: 1.5, step: 0.01 },
+      { key: "propZ", label: "Prop Z", type: "range", min: -1.0, max: 1.0, step: 0.01 },
+      { key: "propScale", label: "Prop Scale", type: "range", min: 0.1, max: 3, step: 0.01 },
+      { key: "propRotX", label: "Prop Tilt X", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "propRotY", label: "Prop Tilt Y", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "propRotZ", label: "Prop Tilt Z", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+    ],
+  },
+  {
     title: "Shape",
     fields: [
       { key: "scale", label: "Body Scale", type: "range", min: 0.35, max: 2.2, step: 0.01 },
@@ -262,6 +274,14 @@ export const AVATAR_DEFINITIONS = {
       expression: "neutral",
       propName: NO_PROP_VALUE,
       speed: 1,
+
+      propX: 0,
+      propY: 0.3,
+      propZ: 0,
+      propScale: 1,
+      propRotX: 0,
+      propRotY: 0,
+      propRotZ: 0,
 
       scale: 0.54,
       wireThickness: 1.79,

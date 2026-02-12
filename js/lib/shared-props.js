@@ -101,7 +101,7 @@ registerSharedProp("sunglasses", {
 registerSharedProp("topHat", {
   defaultAnchor: "head",
   placements: {
-    clippy: { x: 0, y: 0.48, z: 0.03, scale: 0.42, rotX: 0, rotY: 0, rotZ: 0 },
+    clippy: { x: 0, y: 0.48, z: 0.03, scale: 1, rotX: 0, rotY: 0, rotZ: 0 },
     pushy: { x: 0, y: 0.28, z: 0.02, scale: 0.28, rotX: 0, rotY: 0, rotZ: 0 },
     tacky: { x: 0, y: 0.28, z: 0.02, scale: 0.28, rotX: 0, rotY: 0, rotZ: 0 },
     towely: { x: 0, y: 0.42, z: 0.08, scale: 0.52, rotX: 0, rotY: 0, rotZ: 0 },

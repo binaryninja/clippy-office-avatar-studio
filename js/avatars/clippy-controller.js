@@ -1,8 +1,10 @@
 import { officePackPlugin } from "../lib/clippy-3d-plugin-examples.js";
 import { createClippy3D } from "../lib/clippy-3d.js";
 import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
-import { NO_PROP_VALUE } from "../config/avatars.js";
 import { registerEngine } from "../engines.js";
+import { createPropManager, listSharedProps, getSharedProp, loadPropPlacement, savePropPlacement, applyPlacementToObject } from "../lib/prop-system.js";
+import "../lib/shared-props.js";
+import { NO_PROP_VALUE } from "../config/avatars.js";
 
 const FALLBACK_MODES = ["idle", "wave", "celebrate", "spin", "point"];
 const EXPRESSION_CHOICES = ["neutral", "happy", "focused", "surprised"];
@@ -166,7 +168,7 @@ function createMouthRig(THREE, sourceMouth) {
   };
 }
 
-export function createClippyController({ THREE, scene, initialState }) {
+export function createClippyController({ THREE, scene, initialState, avatarId }) {
   const state = { ...initialState };
   const plugins = [officePackPlugin].filter(Boolean);
 
@@ -184,7 +186,11 @@ export function createClippyController({ THREE, scene, initialState }) {
   }
 
   const availableModes = typeof clippy.listAnimations === "function" ? clippy.listAnimations() : FALLBACK_MODES;
-  const availableProps = typeof clippy.listProps === "function" ? clippy.listProps() : [];
+  const internalProps = typeof clippy.listProps === "function" ? clippy.listProps() : [];
+  const sharedPropNames = listSharedProps();
+  const allPropNames = [...new Set([...internalProps, ...sharedPropNames])];
+
+  const propManager = createPropManager();
 
   const clipMesh = clippy.group.children.find((node) => node.isMesh && node.geometry?.type === "TubeGeometry");
   const metalMaterial = clipMesh?.material || null;
@@ -226,6 +232,7 @@ export function createClippyController({ THREE, scene, initialState }) {
   const propRuntime = {
     id: null,
     name: NO_PROP_VALUE,
+    isShared: false,
   };
 
   const voiceRuntime = {
@@ -468,20 +475,63 @@ export function createClippyController({ THREE, scene, initialState }) {
     mouthRig.tongue.position.y = -0.052 - cavityOpen * 0.05;
   }
 
+  function applyPropPlacement() {
+    if (!propRuntime.isShared || propRuntime.id === null) return;
+    const obj = propManager.getObject(propRuntime.id);
+    if (!obj) return;
+    applyPlacementToObject(obj, {
+      x: state.propX, y: state.propY, z: state.propZ,
+      scale: state.propScale,
+      rotX: state.propRotX, rotY: state.propRotY, rotZ: state.propRotZ,
+    });
+  }
+
   function applyPropState(force = false) {
     const desired = state.propName || NO_PROP_VALUE;
     if (!force && desired === propRuntime.name) return;
 
-    if (propRuntime.id !== null && typeof clippy.detachProp === "function") {
-      clippy.detachProp(propRuntime.id);
+    // Detach previous prop (internal or shared)
+    if (propRuntime.id !== null) {
+      if (propRuntime.isShared) {
+        propManager.detach(propRuntime.id);
+      } else if (typeof clippy.detachProp === "function") {
+        clippy.detachProp(propRuntime.id);
+      }
     }
 
     propRuntime.id = null;
     propRuntime.name = NO_PROP_VALUE;
+    propRuntime.isShared = false;
 
     if (desired === NO_PROP_VALUE) return;
-    if (!availableProps.includes(desired) || typeof clippy.attachProp !== "function") return;
 
+    // Try shared prop first, then internal
+    const sharedDef = getSharedProp(desired);
+    if (sharedDef) {
+      const anchors = { head: clippy.head, body: clippy.group };
+      const anchor = anchors[sharedDef.defaultAnchor];
+      const id = propManager.attach({ name: desired, anchorName: sharedDef.defaultAnchor, anchor, propDefinition: sharedDef, THREE });
+      if (id !== null) {
+        propRuntime.id = id;
+        propRuntime.name = desired;
+        propRuntime.isShared = true;
+
+        const placement = loadPropPlacement(desired, avatarId, sharedDef);
+        state.propX = placement.x;
+        state.propY = placement.y;
+        state.propZ = placement.z;
+        state.propScale = placement.scale;
+        state.propRotX = placement.rotX;
+        state.propRotY = placement.rotY;
+        state.propRotZ = placement.rotZ;
+
+        applyPropPlacement();
+      }
+      return;
+    }
+
+    // Fall back to internal Clippy prop system
+    if (!internalProps.includes(desired) || typeof clippy.attachProp !== "function") return;
     try {
       propRuntime.id = clippy.attachProp(desired);
       propRuntime.name = desired;
@@ -514,6 +564,14 @@ export function createClippyController({ THREE, scene, initialState }) {
     applyBehaviorState(force);
     applyMaterialState();
     applyMorphState();
+    applyPropPlacement();
+    if (propRuntime.isShared && propRuntime.name !== NO_PROP_VALUE) {
+      savePropPlacement(propRuntime.name, avatarId, {
+        x: state.propX, y: state.propY, z: state.propZ,
+        scale: state.propScale,
+        rotX: state.propRotX, rotY: state.propRotY, rotZ: state.propRotZ,
+      });
+    }
   }
 
   function update(dt, pointer) {
@@ -546,7 +604,8 @@ export function createClippyController({ THREE, scene, initialState }) {
   }
 
   function dispose() {
-    if (propRuntime.id !== null && typeof clippy.detachProp === "function") {
+    propManager.detachAll();
+    if (propRuntime.id !== null && !propRuntime.isShared && typeof clippy.detachProp === "function") {
       clippy.detachProp(propRuntime.id);
     }
     scene.remove(clippy.group);
@@ -576,7 +635,7 @@ export function createClippyController({ THREE, scene, initialState }) {
       return {
         modes: availableModes,
         expressions: [...EXPRESSION_CHOICES],
-        props: [NO_PROP_VALUE, ...availableProps],
+        props: [NO_PROP_VALUE, ...allPropNames],
       };
     },
   };
