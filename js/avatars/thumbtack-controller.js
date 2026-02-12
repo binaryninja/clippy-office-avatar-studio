@@ -1,8 +1,15 @@
 import { createThumbTackAvatar, expressionProfile } from "../lib/thumbtack-factory.js";
-import { clamp } from "../lib/utils.js";
+import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
 
 const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate"];
 const EXPRESSION_CHOICES = ["neutral", "smile", "determined", "startled"];
+const THUMBTACK_EYE_RADIUS = 0.07;
+const THUMBTACK_PUPIL_RADIUS = 0.033;
+const THUMBTACK_PUPIL_SURFACE_SETTINGS = Object.freeze({
+  edgeClamp: 0.84,
+  centerProtrusion: 0.1,
+  edgeInset: 0.08,
+});
 
 export function createThumbtackController({ THREE, scene, initialState, profile, stageTopY }) {
   const state = { ...initialState };
@@ -100,8 +107,16 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     const pupilScale = state.pupilScale;
     avatar.leftPupil.scale.set(pupilScale, pupilScale, pupilScale * 0.52);
     avatar.rightPupil.scale.set(pupilScale, pupilScale, pupilScale * 0.52);
-    avatar.leftPupil.position.z = 0.078;
-    avatar.rightPupil.position.z = 0.078;
+    constrainPupilToEyeSurface(avatar.leftEye, avatar.leftPupil, {
+      eyeRadius: THUMBTACK_EYE_RADIUS,
+      pupilRadius: THUMBTACK_PUPIL_RADIUS,
+      ...THUMBTACK_PUPIL_SURFACE_SETTINGS,
+    });
+    constrainPupilToEyeSurface(avatar.rightEye, avatar.rightPupil, {
+      eyeRadius: THUMBTACK_EYE_RADIUS,
+      pupilRadius: THUMBTACK_PUPIL_RADIUS,
+      ...THUMBTACK_PUPIL_SURFACE_SETTINGS,
+    });
 
     const browTilt = state.browTilt + expr.browTilt;
     const browY = 0.2 + state.browLift + expr.browLift;
@@ -170,6 +185,16 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     avatar.rightPupil.position.x = state.eyeSpacing + lookX;
     avatar.leftPupil.position.y = lookY;
     avatar.rightPupil.position.y = lookY;
+    constrainPupilToEyeSurface(avatar.leftEye, avatar.leftPupil, {
+      eyeRadius: THUMBTACK_EYE_RADIUS,
+      pupilRadius: THUMBTACK_PUPIL_RADIUS,
+      ...THUMBTACK_PUPIL_SURFACE_SETTINGS,
+    });
+    constrainPupilToEyeSurface(avatar.rightEye, avatar.rightPupil, {
+      eyeRadius: THUMBTACK_EYE_RADIUS,
+      pupilRadius: THUMBTACK_PUPIL_RADIUS,
+      ...THUMBTACK_PUPIL_SURFACE_SETTINGS,
+    });
   }
 
   function applyVoiceFrame(dt) {

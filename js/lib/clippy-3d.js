@@ -1,3 +1,5 @@
+import { constrainPupilToEyeSurface } from "./utils.js";
+
 const DEFAULTS = {
   scale: 1,
   metalColor: 0xe7edf6,
@@ -18,6 +20,14 @@ const MODE_DEFAULT_EXPRESSIONS = {
 
 const GLOBAL_ANIMATIONS = Object.create(null);
 const GLOBAL_PROPS = Object.create(null);
+const CLIPPY_EYE_RADIUS = 0.22;
+const CLIPPY_PUPIL_RADIUS = 0.11;
+const CLIPPY_PUPIL_SURFACE_SETTINGS = Object.freeze({
+  edgeClamp: 0.64,
+  centerProtrusion: 0.1,
+  edgeInset: 0.16,
+  edgeInsetPower: 2.2,
+});
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -85,6 +95,61 @@ function buildClipCurve(THREE) {
   path.add(new THREE.CubicBezierCurve3(p(40, 116), p(48, 116), p(52, 110), p(52, 102)));
   path.add(new THREE.LineCurve3(p(52, 102), p(52, 46)));
   return path;
+}
+
+function buildBrowCurve(THREE, baseRadius = 0.14, direction = 1) {
+  const dir = direction >= 0 ? 1 : -1;
+  const innerX = -baseRadius * 1.24 * dir;
+  const outerX = baseRadius * 1.34 * dir;
+
+  return new THREE.CatmullRomCurve3(
+    [
+      new THREE.Vector3(innerX, -baseRadius * 0.16, 0),
+      new THREE.Vector3(-baseRadius * 0.32 * dir, baseRadius * 0.48, baseRadius * 0.03),
+      new THREE.Vector3(baseRadius * 0.62 * dir, baseRadius * 0.42, baseRadius * 0.04),
+      new THREE.Vector3(outerX, baseRadius * 0.08, 0),
+    ],
+    false,
+    "centripetal",
+    0.48,
+  );
+}
+
+function createTaperedBrowGeometry(
+  THREE,
+  {
+    baseRadius = 0.14,
+    tubeRadius = 0.016,
+    direction = 1,
+    tubularSegments = 32,
+    radialSegments = 12,
+  } = {},
+) {
+  const curve = buildBrowCurve(THREE, baseRadius, direction);
+  const geometry = new THREE.TubeGeometry(curve, tubularSegments, tubeRadius, radialSegments, false);
+  const positions = geometry.attributes.position;
+  const ringSize = radialSegments + 1;
+  const center = new THREE.Vector3();
+  const vertex = new THREE.Vector3();
+  const offset = new THREE.Vector3();
+
+  for (let ringIndex = 0; ringIndex <= tubularSegments; ringIndex += 1) {
+    const t = ringIndex / tubularSegments;
+    const taper = clamp(1.36 - Math.pow(t, 1.18) * 1.2, 0.14, 1.36);
+    curve.getPointAt(t, center);
+
+    for (let radialIndex = 0; radialIndex <= radialSegments; radialIndex += 1) {
+      const index = ringIndex * ringSize + radialIndex;
+      vertex.fromBufferAttribute(positions, index);
+      offset.subVectors(vertex, center).multiplyScalar(taper);
+      vertex.copy(center).add(offset);
+      positions.setXYZ(index, vertex.x, vertex.y, vertex.z);
+    }
+  }
+
+  positions.needsUpdate = true;
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 function createArm(THREE, color) {
@@ -237,7 +302,6 @@ class Clippy3D {
     this.browThickness = clamp(Number.isFinite(parsedBrowThickness) ? parsedBrowThickness : 1, 0.35, 3.2);
     this.eyeScale = clamp(Number.isFinite(parsedEyeScale) ? parsedEyeScale : 2, 0.65, 4.5);
     this.eyeSpacing = clamp(Number.isFinite(parsedEyeSpacing) ? parsedEyeSpacing : 0.5, 0.24, 1.25);
-    this.pupilDepth = 0.21 * this.eyeScale;
 
     this._buildMesh();
     this.group.scale.setScalar(this.options.scale);
@@ -320,15 +384,18 @@ class Clippy3D {
     this.head.position.set(-0.28, 1.72, 0.5);
     this.group.add(this.head);
 
-    const eyeGeom = new THREE.SphereGeometry(0.22, 24, 18);
-    const pupilGeom = new THREE.SphereGeometry(0.11, 16, 14);
-    const browGeom = new THREE.TorusGeometry(
-      this.baseBrowRadius,
-      this.baseBrowTubeRadius * this.browThickness,
-      8,
-      26,
-      Math.PI * 0.9,
-    );
+    const eyeGeom = new THREE.SphereGeometry(CLIPPY_EYE_RADIUS, 24, 18);
+    const pupilGeom = new THREE.SphereGeometry(CLIPPY_PUPIL_RADIUS, 28, 24);
+    const leftBrowGeom = createTaperedBrowGeometry(THREE, {
+      baseRadius: this.baseBrowRadius,
+      tubeRadius: this.baseBrowTubeRadius * this.browThickness,
+      direction: -1,
+    });
+    const rightBrowGeom = createTaperedBrowGeometry(THREE, {
+      baseRadius: this.baseBrowRadius,
+      tubeRadius: this.baseBrowTubeRadius * this.browThickness,
+      direction: 1,
+    });
 
     this.leftEye = new THREE.Mesh(eyeGeom, scleraMat);
     this.leftEye.position.set(-this.eyeSpacing, 0, 0);
@@ -341,20 +408,23 @@ class Clippy3D {
     this.rightEye.castShadow = true;
 
     this.leftPupil = new THREE.Mesh(pupilGeom, darkMat);
-    this.leftPupil.position.set(-this.eyeSpacing, this.basePupilY, this.pupilDepth);
+    this.leftPupil.position.set(-this.eyeSpacing, this.basePupilY, 0);
     this.leftPupil.scale.setScalar(this.eyeScale);
 
     this.rightPupil = new THREE.Mesh(pupilGeom, darkMat);
-    this.rightPupil.position.set(this.eyeSpacing, this.basePupilY, this.pupilDepth);
+    this.rightPupil.position.set(this.eyeSpacing, this.basePupilY, 0);
     this.rightPupil.scale.setScalar(this.eyeScale);
 
-    this.leftBrow = new THREE.Mesh(browGeom, darkMat);
-    this.leftBrow.position.set(-0.38, 0.29, 0.23);
-    this.leftBrow.rotation.set(0.06, 0.0, -0.25);
+    this._positionPupilOnEye(this.leftEye, this.leftPupil);
+    this._positionPupilOnEye(this.rightEye, this.rightPupil);
 
-    this.rightBrow = new THREE.Mesh(browGeom, darkMat);
+    this.leftBrow = new THREE.Mesh(leftBrowGeom, darkMat);
+    this.leftBrow.position.set(-0.38, 0.29, 0.23);
+    this.leftBrow.rotation.set(0.03, 0.0, -0.25);
+
+    this.rightBrow = new THREE.Mesh(rightBrowGeom, darkMat);
     this.rightBrow.position.set(0.38, 0.29, 0.23);
-    this.rightBrow.rotation.set(0.06, 0.0, 0.25);
+    this.rightBrow.rotation.set(0.03, 0.0, 0.25);
 
     const mouthGeom = new THREE.TorusGeometry(0.16, 0.028, 10, 28, Math.PI);
     this.mouth = new THREE.Mesh(mouthGeom, darkMat);
@@ -523,21 +593,24 @@ class Clippy3D {
     this.options.browThickness = next;
     if (!this.leftBrow || !this.rightBrow) return;
 
-    const nextGeom = new this.THREE.TorusGeometry(
-      this.baseBrowRadius,
-      this.baseBrowTubeRadius * this.browThickness,
-      8,
-      26,
-      Math.PI * 0.9,
-    );
+    const nextLeftGeom = createTaperedBrowGeometry(this.THREE, {
+      baseRadius: this.baseBrowRadius,
+      tubeRadius: this.baseBrowTubeRadius * this.browThickness,
+      direction: -1,
+    });
+    const nextRightGeom = createTaperedBrowGeometry(this.THREE, {
+      baseRadius: this.baseBrowRadius,
+      tubeRadius: this.baseBrowTubeRadius * this.browThickness,
+      direction: 1,
+    });
 
     const prevLeft = this.leftBrow.geometry;
     const prevRight = this.rightBrow.geometry;
-    this.leftBrow.geometry = nextGeom;
-    this.rightBrow.geometry = nextGeom;
+    this.leftBrow.geometry = nextLeftGeom;
+    this.rightBrow.geometry = nextRightGeom;
 
     if (prevLeft && typeof prevLeft.dispose === "function") prevLeft.dispose();
-    if (prevRight && prevRight !== prevLeft && typeof prevRight.dispose === "function") prevRight.dispose();
+    if (prevRight && typeof prevRight.dispose === "function") prevRight.dispose();
   }
 
   _applyExpression() {
@@ -573,6 +646,14 @@ class Clippy3D {
     this.rightBrow.position.y = 0.29 + browDrop;
   }
 
+  _positionPupilOnEye(eye, pupil) {
+    constrainPupilToEyeSurface(eye, pupil, {
+      eyeRadius: CLIPPY_EYE_RADIUS,
+      pupilRadius: CLIPPY_PUPIL_RADIUS,
+      ...CLIPPY_PUPIL_SURFACE_SETTINGS,
+    });
+  }
+
   _applyLook() {
     const localTarget = this.head.worldToLocal(this._tmpLook.copy(this.lookTarget));
 
@@ -583,6 +664,9 @@ class Clippy3D {
     this.rightPupil.position.x = this.eyeSpacing + lookX;
     this.leftPupil.position.y = this.basePupilY + lookY;
     this.rightPupil.position.y = this.basePupilY + lookY;
+
+    this._positionPupilOnEye(this.leftEye, this.leftPupil);
+    this._positionPupilOnEye(this.rightEye, this.rightPupil);
   }
 
   _updateBlink(dt) {
@@ -604,6 +688,9 @@ class Clippy3D {
     const pupilScaleY = this.eyeScale * (1 - blink * 0.85);
     this.leftPupil.scale.y = pupilScaleY;
     this.rightPupil.scale.y = pupilScaleY;
+
+    this._positionPupilOnEye(this.leftEye, this.leftPupil);
+    this._positionPupilOnEye(this.rightEye, this.rightPupil);
   }
 
   _resetPose() {

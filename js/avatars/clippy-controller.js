@@ -1,6 +1,6 @@
 import { officePackPlugin } from "../lib/clippy-3d-plugin-examples.js";
 import { createClippy3D } from "../lib/clippy-3d.js";
-import { clamp } from "../lib/utils.js";
+import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
 const FALLBACK_MODES = ["idle", "wave", "celebrate", "spin", "point"];
@@ -23,6 +23,15 @@ const VISEME_POSES = Object.freeze({
   tn: { open: 0.24, width: 1.08, round: 0.04, press: 0.28, jaw: 0.1 },
   ss: { open: 0.14, width: 1.22, round: -0.04, press: 0.24, jaw: 0.06 },
   kk: { open: 0.28, width: 1.02, round: 0.06, press: 0.26, jaw: 0.12 },
+});
+
+const CLIPPY_EYE_RADIUS = 0.22;
+const CLIPPY_PUPIL_RADIUS = 0.11;
+const CLIPPY_PUPIL_SURFACE_SETTINGS = Object.freeze({
+  edgeClamp: 0.64,
+  centerProtrusion: 0.1,
+  edgeInset: 0.16,
+  edgeInsetPower: 2.2,
 });
 
 function expressionProfile(expression) {
@@ -196,6 +205,7 @@ export function createClippyController({ THREE, scene, initialState }) {
   const base = {
     head: clippy.head.position.clone(),
     mouthZ: clippy.mouth.position.z,
+    browSpacing: Math.abs(clippy.leftBrow.position.x),
     leftPupilX: clippy.leftPupil.position.x,
     rightPupilX: clippy.rightPupil.position.x,
     leftPupilY: clippy.leftPupil.position.y,
@@ -293,10 +303,6 @@ export function createClippyController({ THREE, scene, initialState }) {
     clippy.leftPupil.position.y = base.leftPupilY + lookY;
     clippy.rightPupil.position.y = base.rightPupilY + lookY;
 
-    const dynamicPupilDepth = 0.21 * state.eyeScale;
-    clippy.leftPupil.position.z = dynamicPupilDepth;
-    clippy.rightPupil.position.z = dynamicPupilDepth;
-
     clippy.leftEye.scale.x = state.eyeScale;
     clippy.rightEye.scale.x = state.eyeScale;
     clippy.leftEye.scale.z = state.eyeScale;
@@ -317,6 +323,24 @@ export function createClippyController({ THREE, scene, initialState }) {
     clippy.leftPupil.scale.y *= pupilYFactor;
     clippy.rightPupil.scale.y *= pupilYFactor;
 
+    constrainPupilToEyeSurface(clippy.leftEye, clippy.leftPupil, {
+      eyeRadius: CLIPPY_EYE_RADIUS,
+      pupilRadius: CLIPPY_PUPIL_RADIUS,
+      ...CLIPPY_PUPIL_SURFACE_SETTINGS,
+    });
+    constrainPupilToEyeSurface(clippy.rightEye, clippy.rightPupil, {
+      eyeRadius: CLIPPY_EYE_RADIUS,
+      pupilRadius: CLIPPY_PUPIL_RADIUS,
+      ...CLIPPY_PUPIL_SURFACE_SETTINGS,
+    });
+
+    const browSpacing = clamp(
+      Number.isFinite(state.browSpacing) ? Math.abs(state.browSpacing) : base.browSpacing,
+      0.18,
+      0.78,
+    );
+    clippy.leftBrow.position.x = -browSpacing;
+    clippy.rightBrow.position.x = browSpacing;
     clippy.leftBrow.position.y = 0.29 + expr.browDrop + state.browLift;
     clippy.rightBrow.position.y = 0.29 + expr.browDrop + state.browLift;
     clippy.leftBrow.rotation.z = -expr.browTilt - state.browTilt;
