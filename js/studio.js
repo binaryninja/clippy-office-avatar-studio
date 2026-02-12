@@ -12,6 +12,7 @@ import { createThumbtackController } from "./avatars/thumbtack-controller.js";
 import { createTowelyController } from "./avatars/towely-controller.js";
 import { clamp, randomBetween, randomColor } from "./lib/utils.js";
 import { createRealtimeVoice } from "./lib/realtime-voice.js";
+import { createElevenLabsVoice } from "./lib/elevenlabs-voice.js";
 
 const canvas = document.getElementById("studioCanvas");
 const stageEl = document.querySelector(".stage");
@@ -24,6 +25,7 @@ const btnRandom = document.getElementById("btnRandom");
 const btnCopy = document.getElementById("btnCopy");
 const btnApply = document.getElementById("btnApply");
 const btnVoice = document.getElementById("btnVoice");
+const btnElevenVoice = document.getElementById("btnElevenVoice");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -226,6 +228,7 @@ let assistantViseme = {
   viseme: "sil",
   strength: 0,
 };
+let activeVoiceProvider = null;
 let devVowelDemoRunId = 0;
 
 const controlRegistry = new Map();
@@ -266,37 +269,6 @@ function setAssistantMouth({ viseme = "sil", strength = 0, level = 0 } = {}) {
   assistantSpeechLevel = clamp(Number(level) || 0, 0, 1);
 }
 
-async function runDevVowelDemo() {
-  if (!import.meta.env.DEV) return;
-
-  const runId = ++devVowelDemoRunId;
-  const sequence = [
-    { label: "A", viseme: "aa", strength: 0.98, level: 0.88, holdMs: 520 },
-    { label: "E", viseme: "ee", strength: 0.94, level: 0.8, holdMs: 500 },
-    { label: "I", viseme: "ee", strength: 0.9, level: 0.74, holdMs: 460 },
-    { label: "O", viseme: "oh", strength: 0.95, level: 0.84, holdMs: 520 },
-    { label: "U", viseme: "ou", strength: 0.94, level: 0.8, holdMs: 520 },
-  ];
-
-  await sleep(420);
-  if (runId !== devVowelDemoRunId || realtimeVoice.isConnected()) return;
-  setStatus("Dev mouth demo: A-E-I-O-U", 1500);
-
-  for (const step of sequence) {
-    if (runId !== devVowelDemoRunId || realtimeVoice.isConnected()) return;
-    setAssistantMouth(step);
-    await sleep(step.holdMs);
-
-    if (runId !== devVowelDemoRunId || realtimeVoice.isConnected()) return;
-    setAssistantMouth();
-    await sleep(150);
-  }
-
-  if (runId === devVowelDemoRunId && !realtimeVoice.isConnected()) {
-    setAssistantMouth();
-  }
-}
-
 function buildVoiceSessionInstructions() {
   const runtime = getAvatarRuntime();
   const label = runtime?.definition?.label || "Office avatar";
@@ -316,13 +288,59 @@ function buildVoiceGreetingInstructions() {
   return `In one short friendly sentence, greet the user as ${label} and ask what they want to work on.`;
 }
 
+function canConsumeVoice(provider) {
+  if (!activeVoiceProvider) {
+    activeVoiceProvider = provider;
+    return true;
+  }
+  return activeVoiceProvider === provider;
+}
+
+function handleVoiceConnectionChange(provider, connected) {
+  if (connected) {
+    activeVoiceProvider = provider;
+    if (provider === "openai") {
+      elevenLabsVoice.disconnect({ silent: true });
+    } else if (provider === "elevenlabs") {
+      realtimeVoice.disconnect({ silent: true });
+    }
+    return;
+  }
+
+  if (activeVoiceProvider === provider) {
+    activeVoiceProvider = null;
+    setAssistantMouth();
+  }
+}
+
+const elevenLabsAgentId =
+  String(window.ELEVENLABS_AGENT_ID || "").trim()
+  || String(import.meta.env.VITE_ELEVENLABS_AGENT_ID || "").trim()
+  || "agent_6201kh80gehme6wacehwktq31hsk";
+
+const rawElevenLabsConnectionType =
+  String(window.ELEVENLABS_CONNECTION_TYPE || "").trim()
+  || String(import.meta.env.VITE_ELEVENLABS_CONNECTION_TYPE || "").trim()
+  || "webrtc";
+const elevenLabsConnectionType = rawElevenLabsConnectionType.toLowerCase() === "websocket" ? "websocket" : "webrtc";
+
+const elevenLabsVoiceId =
+  String(window.ELEVENLABS_VOICE_ID || "").trim()
+  || String(import.meta.env.VITE_ELEVENLABS_VOICE_ID || "").trim()
+  || "fBD19tfE58bkETeiwUoC";
+
 const realtimeVoice = createRealtimeVoice({
   buttonEl: btnVoice,
   onStatus: setStatus,
+  onConnectionStateChange: ({ connected }) => {
+    handleVoiceConnectionChange("openai", connected);
+  },
   onAssistantSpeechLevel: (level) => {
+    if (!canConsumeVoice("openai")) return;
     assistantSpeechLevel = clamp(level, 0, 1);
   },
   onAssistantViseme: (payload) => {
+    if (!canConsumeVoice("openai")) return;
     assistantViseme = {
       viseme: String(payload?.viseme || "sil"),
       strength: clamp(Number(payload?.strength) || 0, 0, 1),
@@ -331,6 +349,64 @@ const realtimeVoice = createRealtimeVoice({
   getSessionInstructions: buildVoiceSessionInstructions,
   getGreetingInstructions: buildVoiceGreetingInstructions,
 });
+
+const elevenLabsVoice = createElevenLabsVoice({
+  buttonEl: btnElevenVoice,
+  agentId: elevenLabsAgentId,
+  voiceId: elevenLabsVoiceId,
+  connectionType: elevenLabsConnectionType,
+  onStatus: setStatus,
+  onConnectionStateChange: ({ connected }) => {
+    handleVoiceConnectionChange("elevenlabs", connected);
+  },
+  onAssistantSpeechLevel: (level) => {
+    if (!canConsumeVoice("elevenlabs")) return;
+    assistantSpeechLevel = clamp(level, 0, 1);
+  },
+  onAssistantViseme: (payload) => {
+    if (!canConsumeVoice("elevenlabs")) return;
+    assistantViseme = {
+      viseme: String(payload?.viseme || "sil"),
+      strength: clamp(Number(payload?.strength) || 0, 0, 1),
+    };
+  },
+  getSessionInstructions: buildVoiceSessionInstructions,
+});
+
+function isAnyVoiceConnected() {
+  return realtimeVoice.isConnected() || elevenLabsVoice.isConnected();
+}
+
+async function runDevVowelDemo() {
+  if (!import.meta.env.DEV) return;
+
+  const runId = ++devVowelDemoRunId;
+  const sequence = [
+    { label: "A", viseme: "aa", strength: 0.98, level: 0.88, holdMs: 520 },
+    { label: "E", viseme: "ee", strength: 0.94, level: 0.8, holdMs: 500 },
+    { label: "I", viseme: "ee", strength: 0.9, level: 0.74, holdMs: 460 },
+    { label: "O", viseme: "oh", strength: 0.95, level: 0.84, holdMs: 520 },
+    { label: "U", viseme: "ou", strength: 0.94, level: 0.8, holdMs: 520 },
+  ];
+
+  await sleep(420);
+  if (runId !== devVowelDemoRunId || isAnyVoiceConnected()) return;
+  setStatus("Dev mouth demo: A-E-I-O-U", 1500);
+
+  for (const step of sequence) {
+    if (runId !== devVowelDemoRunId || isAnyVoiceConnected()) return;
+    setAssistantMouth(step);
+    await sleep(step.holdMs);
+
+    if (runId !== devVowelDemoRunId || isAnyVoiceConnected()) return;
+    setAssistantMouth();
+    await sleep(150);
+  }
+
+  if (runId === devVowelDemoRunId && !isAnyVoiceConnected()) {
+    setAssistantMouth();
+  }
+}
 
 function flattenControlFields(definition) {
   const fields = [];
@@ -668,6 +744,7 @@ function loadAvatar(avatarId, { instant = false, silent = false } = {}) {
   syncControlsFromState();
   publishPresetText();
   realtimeVoice.syncSessionContext();
+  elevenLabsVoice.syncSessionContext();
 
   if (!silent) {
     setStatus(`${runtime.definition.label} in focus`, 2100);
@@ -834,6 +911,7 @@ function startRenderLoop() {
 function init() {
   populateAvatarSelect();
   realtimeVoice.init();
+  elevenLabsVoice.init();
   installGlobalHandlers();
   applyScenePreset();
   createAvatarRuntimes();
