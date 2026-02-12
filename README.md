@@ -5,6 +5,7 @@ Bundled Three.js avatar studio featuring:
 - Clippy
 - Pushy
 - Tacky
+- Towely
 
 ![Avatar Studio preview](./assets/studio-screenshot.png)
 
@@ -16,9 +17,11 @@ Bundled Three.js avatar studio featuring:
 - `js/config/avatars.js`: model definitions, defaults, and control schema
 - `js/avatars/clippy-controller.js`: Clippy runtime wrapper
 - `js/avatars/thumbtack-controller.js`: Pushy/Tacky runtime wrapper
+- `js/avatars/towely-controller.js`: Towely runtime wrapper
 - `js/lib/clippy-3d.js`: base Clippy model engine
 - `js/lib/clippy-3d-plugin-examples.js`: optional Clippy office props plugin
 - `js/lib/thumbtack-factory.js`: shared Pushy/Tacky mesh factory
+- `js/lib/towely-factory.js`: Towely mesh factory
 - `.github/workflows/ci.yml`: CI checks for pull requests and pushes
 
 ## Run locally

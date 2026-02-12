@@ -5,9 +5,11 @@ import {
   AVATAR_ORDER,
   NO_PROP_VALUE,
   PIN_STAGE_TOP_Y,
+  TOWELY_STAGE_TOP_Y,
 } from "./config/avatars.js";
 import { createClippyController } from "./avatars/clippy-controller.js";
 import { createThumbtackController } from "./avatars/thumbtack-controller.js";
+import { createTowelyController } from "./avatars/towely-controller.js";
 import { clamp, randomBetween, randomColor } from "./lib/utils.js";
 
 const canvas = document.getElementById("studioCanvas");
@@ -501,6 +503,25 @@ function createController(definition, initialState) {
       THREE,
       scene,
       initialState,
+    });
+  }
+
+  if (definition.engine === "thumbtack") {
+    return createThumbtackController({
+      THREE,
+      scene,
+      initialState,
+      profile: definition.profile,
+      stageTopY: PIN_STAGE_TOP_Y,
+    });
+  }
+
+  if (definition.engine === "towely") {
+    return createTowelyController({
+      THREE,
+      scene,
+      initialState,
+      stageTopY: TOWELY_STAGE_TOP_Y,
     });
   }
 

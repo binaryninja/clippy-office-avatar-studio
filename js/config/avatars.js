@@ -137,6 +137,77 @@ const pinFields = [
   },
 ];
 
+const towelyFields = [
+  {
+    title: "Behavior",
+    fields: [
+      {
+        key: "mode",
+        label: "Animation",
+        type: "select",
+        options: ["idle", "bob", "wave", "spin", "celebrate"],
+      },
+      {
+        key: "expression",
+        label: "Expression",
+        type: "select",
+        options: ["neutral", "smug", "angry", "startled"],
+      },
+      {
+        key: "speed",
+        label: "Playback Speed",
+        type: "range",
+        min: 0.2,
+        max: 2.5,
+        step: 0.05,
+        format: "speed",
+      },
+    ],
+  },
+  {
+    title: "Shape",
+    fields: [
+      { key: "scale", label: "Body Scale", type: "range", min: 0.4, max: 2.2, step: 0.01 },
+      { key: "bodyWidth", label: "Width", type: "range", min: 0.72, max: 1.45, step: 0.01 },
+      { key: "bodyHeight", label: "Height", type: "range", min: 0.72, max: 1.45, step: 0.01 },
+      { key: "bodyDepth", label: "Depth", type: "range", min: 0.72, max: 1.45, step: 0.01 },
+      { key: "foldHeight", label: "Fold Offset", type: "range", min: -0.25, max: 0.35, step: 0.01 },
+      { key: "stripeOffset", label: "Stripe Offset", type: "range", min: -0.45, max: 0.45, step: 0.01 },
+      { key: "faceY", label: "Face Y", type: "range", min: -0.8, max: 0.8, step: 0.01 },
+      { key: "faceZ", label: "Face Z", type: "range", min: -0.2, max: 0.35, step: 0.01 },
+      { key: "eyeScale", label: "Eye Scale", type: "range", min: 0.6, max: 2.2, step: 0.01 },
+      { key: "eyeSpacing", label: "Eye Spacing", type: "range", min: 0.12, max: 0.5, step: 0.005 },
+      { key: "browTilt", label: "Brow Tilt", type: "range", min: -0.9, max: 0.9, step: 0.01 },
+      { key: "browLift", label: "Brow Lift", type: "range", min: -0.35, max: 0.35, step: 0.01 },
+      { key: "mouthWidth", label: "Mouth Width", type: "range", min: 0.55, max: 1.8, step: 0.01 },
+      { key: "mouthOpen", label: "Mouth Open", type: "range", min: 0, max: 1.2, step: 0.01 },
+      { key: "armSpread", label: "Arm Spread", type: "range", min: 0.6, max: 2.1, step: 0.01 },
+      { key: "armY", label: "Arm Height", type: "range", min: -1.4, max: 0.6, step: 0.01 },
+      { key: "armBend", label: "Arm Bend", type: "range", min: 0, max: 1.2, step: 0.01 },
+      { key: "legHeight", label: "Leg Height", type: "range", min: 0.35, max: 1.5, step: 0.01 },
+      { key: "legSpread", label: "Leg Spread", type: "range", min: 0.12, max: 0.82, step: 0.01 },
+    ],
+  },
+  {
+    title: "Materials",
+    fields: [
+      { key: "bodyColor", label: "Body", type: "color" },
+      { key: "foldColor", label: "Fold", type: "color" },
+      { key: "stripeColor", label: "Stripes", type: "color" },
+      { key: "skinColor", label: "Skin", type: "color" },
+      { key: "hairColor", label: "Hair", type: "color" },
+      { key: "darkColor", label: "Dark", type: "color" },
+      { key: "shoeColor", label: "Shoes", type: "color" },
+      { key: "glowColor", label: "Glow", type: "color" },
+      { key: "metalness", label: "Metalness", type: "range", min: 0, max: 1, step: 0.01 },
+      { key: "roughness", label: "Roughness", type: "range", min: 0, max: 1, step: 0.01 },
+      { key: "clearcoat", label: "Clearcoat", type: "range", min: 0, max: 1, step: 0.01 },
+      { key: "clearcoatRoughness", label: "Clearcoat Roughness", type: "range", min: 0, max: 1, step: 0.01 },
+      { key: "glowIntensity", label: "Glow Intensity", type: "range", min: 0, max: 1, step: 0.01 },
+    ],
+  },
+];
+
 export const AVATAR_DEFINITIONS = {
   clippy: {
     id: "clippy",
@@ -262,9 +333,56 @@ export const AVATAR_DEFINITIONS = {
       glowIntensity: 0.1,
     },
   },
+  towely: {
+    id: "towely",
+    label: "Towely",
+    description: "Sentient towel mascot with expressive face and bendable limbs.",
+    engine: "towely",
+    scenePreset: "towel",
+    controls: towelyFields,
+    defaultState: {
+      mode: "idle",
+      expression: "neutral",
+      speed: 1,
+
+      scale: 0.73,
+      bodyWidth: 1,
+      bodyHeight: 1,
+      bodyDepth: 1,
+      foldHeight: 0,
+      stripeOffset: 0,
+      faceY: 0,
+      faceZ: 0,
+      eyeScale: 1,
+      eyeSpacing: 0.2,
+      browTilt: 0.02,
+      browLift: 0,
+      mouthWidth: 1,
+      mouthOpen: 0.22,
+      armSpread: 1.1,
+      armY: -0.26,
+      armBend: 0.58,
+      legHeight: 0.86,
+      legSpread: 0.21,
+
+      bodyColor: "#8b8fbe",
+      foldColor: "#7e83b3",
+      stripeColor: "#dcdcf2",
+      skinColor: "#e8d2b0",
+      hairColor: "#8f90be",
+      darkColor: "#1b1b24",
+      shoeColor: "#16181e",
+      glowColor: "#4f5da1",
+      metalness: 0.14,
+      roughness: 0.62,
+      clearcoat: 0.24,
+      clearcoatRoughness: 0.56,
+      glowIntensity: 0.1,
+    },
+  },
 };
 
-export const AVATAR_ORDER = ["clippy", "pushy", "tacky"];
+export const AVATAR_ORDER = ["clippy", "pushy", "tacky", "towely"];
 
 export const SCENE_PRESETS = {
   clippy: {
@@ -281,6 +399,14 @@ export const SCENE_PRESETS = {
     camera: [0.28, -1.45, 5.2],
     orbitTarget: [0, -2.02, 0],
   },
+  towel: {
+    fogColor: 0xdddfeb,
+    fogNear: 8.5,
+    fogFar: 21.5,
+    camera: [0.26, 0.18, 6.9],
+    orbitTarget: [0, -0.66, 0],
+  },
 };
 
 export const PIN_STAGE_TOP_Y = -2.67;
+export const TOWELY_STAGE_TOP_Y = -2.67;
