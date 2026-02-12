@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bart Simpson - Model Inspection</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: #1a1a2e;
+        color: #eee;
+        font-family: system-ui, -apple-system, sans-serif;
+        overflow-x: hidden;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 24px;
+        background: #16213e;
+        border-bottom: 1px solid #0f3460;
+      }
+      header h1 { font-size: 18px; font-weight: 600; }
+      #downloadBtn {
+        padding: 8px 18px;
+        background: #e94560;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      #downloadBtn:hover { background: #c73650; }
+      #downloadBtn:disabled { opacity: 0.5; cursor: wait; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 2px;
+        padding: 2px;
+        background: #0f3460;
+      }
+      .view {
+        position: relative;
+        background: #1a1a2e;
+      }
+      .view canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .view .label {
+        position: absolute;
+        top: 8px;
+        left: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #e94560;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        pointer-events: none;
+      }
+      .view .coords {
+        position: absolute;
+        bottom: 6px;
+        right: 10px;
+        font-size: 10px;
+        color: #888;
+        font-family: monospace;
+        pointer-events: none;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+          "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header>
+      <h1>Bart Simpson — Model Inspection Sheet</h1>
+      <button id="downloadBtn">Download All Screenshots</button>
+    </header>
+    <div class="grid" id="grid"></div>
+
+    <script type="module">
+      import * as THREE from 'three';
+
+      // ========================================================
+      // Camera angle definitions
+      // ========================================================
+      const CENTER = new THREE.Vector3(0, 1.6, 0);
+      const DIST = 4.5;
+
+      const VIEWS = [
+        { name: 'Front',           pos: [0, 1.6, DIST],           lookAt: CENTER },
+        { name: 'Back',            pos: [0, 1.6, -DIST],          lookAt: CENTER },
+        { name: 'Left Profile',    pos: [-DIST, 1.6, 0],          lookAt: CENTER },
+        { name: 'Right Profile',   pos: [DIST, 1.6, 0],           lookAt: CENTER },
+        { name: '3/4 Front-Left',  pos: [-3.2, 2.0, 3.2],        lookAt: CENTER },
+        { name: '3/4 Front-Right', pos: [3.2, 2.0, 3.2],         lookAt: CENTER },
+        { name: 'Top Down',        pos: [0, DIST + 1.6, 0.01],   lookAt: CENTER },
+        { name: 'Face Close-Up',   pos: [0, 2.15, 2.2],          lookAt: new THREE.Vector3(0, 2.15, 0) },
+      ];
+
+      // ========================================================
+      // Build the Bart model (returns a THREE.Group)
+      // ========================================================
+      function buildBart() {
+        const skin = new THREE.MeshStandardMaterial({ color: 0xffd90f });
+        const white = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const black = new THREE.MeshStandardMaterial({ color: 0x111111 });
+        const shirtOrange = new THREE.MeshStandardMaterial({ color: 0xff6600 });
+        const shortsBlue = new THREE.MeshStandardMaterial({ color: 0x2266cc });
+        const shoesBlue = new THREE.MeshStandardMaterial({ color: 0x2266cc });
+
+        const bart = new THREE.Group();
+
+        // Head — cylindrical/tubular with rounded edges (Bart's iconic can shape)
+        const HR = 0.36, HH = 0.55; // radius, half-height
+        const headPts = [
+          // Bottom (chin) — tapers inward
+          new THREE.Vector2(0,    -HH),
+          new THREE.Vector2(0.16, -HH + 0.01),
+          new THREE.Vector2(0.28, -HH + 0.05),
+          new THREE.Vector2(HR - 0.02, -HH + 0.12),
+          // Straight cylindrical sides
+          new THREE.Vector2(HR,   -HH + 0.16),
+          new THREE.Vector2(HR,    HH - 0.10),
+          // Top — slight dome / rounded edge
+          new THREE.Vector2(HR - 0.02, HH - 0.05),
+          new THREE.Vector2(0.28, HH - 0.02),
+          new THREE.Vector2(0.16, HH - 0.005),
+          new THREE.Vector2(0,    HH),
+        ];
+        const headGeo = new THREE.LatheGeometry(headPts, 32);
+        const head = new THREE.Mesh(headGeo, skin);
+        head.position.y = 2.15;
+        bart.add(head);
+
+        // Spikes — single connected zigzag crown
+        const crownShape = new THREE.Shape();
+        const NUM_SPIKES = 9;
+        const CROWN_HALF_W = 0.32;
+        const SPIKE_H = 0.25;
+        const VALLEY_H = 0.03;
+        const SPIKE_W = (CROWN_HALF_W * 2) / NUM_SPIKES;
+
+        crownShape.moveTo(-CROWN_HALF_W, 0);
+        for (let i = 0; i < NUM_SPIKES; i++) {
+          const peakX = -CROWN_HALF_W + (i + 0.5) * SPIKE_W;
+          const nextX = -CROWN_HALF_W + (i + 1) * SPIKE_W;
+          crownShape.lineTo(peakX, SPIKE_H);
+          crownShape.lineTo(nextX, i < NUM_SPIKES - 1 ? VALLEY_H : 0);
+        }
+        crownShape.lineTo(-CROWN_HALF_W, 0);
+
+        const CROWN_DEPTH = 0.44;
+        const crownGeo = new THREE.ExtrudeGeometry(crownShape, {
+          depth: CROWN_DEPTH,
+          bevelEnabled: false,
+        });
+        const crown = new THREE.Mesh(crownGeo, skin);
+        crown.position.set(0, 2.15 + HH - 0.05, -CROWN_DEPTH / 2);
+        bart.add(crown);
+
+        // Eyes — large overlapping Simpsons-style ovals bulging from face
+        const eyeGeo = new THREE.SphereGeometry(0.22, 24, 24);
+        const leftEye = new THREE.Mesh(eyeGeo, white);
+        leftEye.position.set(-0.08, 2.18, 0.30);
+        leftEye.scale.set(0.85, 1.1, 0.55);
+        bart.add(leftEye);
+
+        const rightEye = new THREE.Mesh(eyeGeo, white);
+        rightEye.position.set(0.08, 2.18, 0.30);
+        rightEye.scale.set(0.85, 1.1, 0.55);
+        bart.add(rightEye);
+
+        // Pupils — small black dots
+        const pupilGeo = new THREE.SphereGeometry(0.04, 12, 12);
+        const leftPupil = new THREE.Mesh(pupilGeo, black);
+        leftPupil.position.set(-0.06, 2.18, 0.42);
+        bart.add(leftPupil);
+
+        const rightPupil = new THREE.Mesh(pupilGeo, black);
+        rightPupil.position.set(0.10, 2.18, 0.42);
+        bart.add(rightPupil);
+
+        // Nose — subtle bump at the eye junction
+        const noseGeo = new THREE.SphereGeometry(0.05, 12, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+        const nose = new THREE.Mesh(noseGeo, skin);
+        nose.position.set(0.01, 2.12, 0.40);
+        nose.rotation.x = -Math.PI / 5;
+        bart.add(nose);
+
+        // Overbite — protruding upper lip bump
+        const overbiteGeo = new THREE.SphereGeometry(0.14, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+        overbiteGeo.scale(1.1, 0.6, 0.7);
+        const overbite = new THREE.Mesh(overbiteGeo, skin);
+        overbite.position.set(0.01, 1.97, 0.32);
+        overbite.rotation.x = -Math.PI / 6;
+        bart.add(overbite);
+
+        // Mouth line — sits on the underside of the overbite
+        const mouthCurve = new THREE.QuadraticBezierCurve3(
+          new THREE.Vector3(-0.12, 1.93, 0.35),
+          new THREE.Vector3(0, 1.91, 0.40),
+          new THREE.Vector3(0.12, 1.93, 0.35)
+        );
+        bart.add(new THREE.Mesh(new THREE.TubeGeometry(mouthCurve, 12, 0.013, 8, false), black));
+
+        // Lower lip / chin bump
+        const chinGeo = new THREE.SphereGeometry(0.10, 14, 14, 0, Math.PI * 2, 0, Math.PI / 2);
+        chinGeo.scale(1, 0.5, 0.6);
+        const chin = new THREE.Mesh(chinGeo, skin);
+        chin.position.set(0.01, 1.89, 0.33);
+        chin.rotation.x = Math.PI / 3;
+        bart.add(chin);
+
+        // Ears — small curved bumps protruding from cylinder sides
+        const earGeo = new THREE.SphereGeometry(0.09, 16, 16, 0, Math.PI);
+        earGeo.scale(0.5, 1, 0.8);
+        const leftEar = new THREE.Mesh(earGeo, skin);
+        leftEar.position.set(-0.36, 2.08, 0);
+        leftEar.rotation.y = Math.PI / 2;
+        bart.add(leftEar);
+        const rightEar = new THREE.Mesh(earGeo.clone(), skin);
+        rightEar.position.set(0.36, 2.08, 0);
+        rightEar.rotation.y = -Math.PI / 2;
+        bart.add(rightEar);
+
+        // Neck
+        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.15, 16), skin);
+        neck.position.y = 1.78;
+        bart.add(neck);
+
+        // Torso
+        const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.25, 0.6, 16), shirtOrange);
+        torso.position.y = 1.4;
+        bart.add(torso);
+
+        // Arms — explicit trig placement, no hierarchy
+        const SLEEVE_LEN = 0.2;
+        const ARM_LEN = 0.36;
+        const ANG = Math.PI / 5; // ~36 deg outward from vertical
+        const sinA = Math.sin(ANG), cosA = Math.cos(ANG);
+        const sleeveGeo = new THREE.CylinderGeometry(0.06, 0.065, SLEEVE_LEN, 12);
+        const armGeo = new THREE.CylinderGeometry(0.045, 0.04, ARM_LEN, 10);
+
+        function makeHand(side) {
+          const hand = new THREE.Group();
+          const palm = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), skin);
+          palm.scale.set(1, 0.8, 0.9);
+          hand.add(palm);
+          const fingerGeo = new THREE.CylinderGeometry(0.016, 0.014, 0.09, 6);
+          for (let i = 0; i < 4; i++) {
+            const finger = new THREE.Mesh(fingerGeo, skin);
+            const spread = (i - 1.5) * 0.032;
+            finger.position.set(spread, -0.07, 0.02);
+            finger.rotation.z = spread * 0.6;
+            hand.add(finger);
+          }
+          const thumbGeo = new THREE.CylinderGeometry(0.016, 0.014, 0.065, 6);
+          const thumb = new THREE.Mesh(thumbGeo, skin);
+          thumb.position.set(side * 0.05, -0.01, 0.04);
+          thumb.rotation.z = side * 0.7;
+          hand.add(thumb);
+          return hand;
+        }
+
+        for (const s of [-1, 1]) {
+          // Joint positions computed via trig
+          const shoulderX = s * 0.30, shoulderY = 1.60;
+          const elbowX = shoulderX + s * sinA * SLEEVE_LEN;
+          const elbowY = shoulderY - cosA * SLEEVE_LEN;
+          const wristX = elbowX + s * sinA * ARM_LEN;
+          const wristY = elbowY - cosA * ARM_LEN;
+
+          // Shoulder joint — sphere bridging torso to sleeve
+          const shoulderBall = new THREE.Mesh(
+            new THREE.SphereGeometry(0.07, 12, 12), shirtOrange
+          );
+          shoulderBall.position.set(shoulderX, shoulderY, 0);
+          bart.add(shoulderBall);
+
+          // Sleeve — centered between shoulder and elbow
+          const sleeve = new THREE.Mesh(sleeveGeo.clone(), shirtOrange);
+          sleeve.position.set(
+            (shoulderX + elbowX) / 2,
+            (shoulderY + elbowY) / 2,
+            0
+          );
+          sleeve.rotation.z = s * ANG;
+          bart.add(sleeve);
+
+          // Arm — centered between elbow and wrist
+          const arm = new THREE.Mesh(armGeo.clone(), skin);
+          arm.position.set(
+            (elbowX + wristX) / 2,
+            (elbowY + wristY) / 2,
+            0
+          );
+          arm.rotation.z = s * ANG;
+          bart.add(arm);
+
+          // Hand — at wrist
+          const hand = makeHand(s);
+          hand.position.set(wristX, wristY, 0);
+          bart.add(hand);
+        }
+
+        // Shorts
+        const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 0.25, 16), shortsBlue);
+        shorts.position.y = 0.98;
+        bart.add(shorts);
+
+        // Legs
+        const legGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.45, 12);
+        const leftLeg = new THREE.Mesh(legGeo, skin);
+        leftLeg.position.set(-0.12, 0.63, 0);
+        bart.add(leftLeg);
+        const rightLeg = new THREE.Mesh(legGeo, skin);
+        rightLeg.position.set(0.12, 0.63, 0);
+        bart.add(rightLeg);
+
+        // Shoes
+        const shoeGeo = new THREE.BoxGeometry(0.16, 0.1, 0.28);
+        const leftShoe = new THREE.Mesh(shoeGeo, shoesBlue);
+        leftShoe.position.set(-0.12, 0.38, 0.04);
+        bart.add(leftShoe);
+        const rightShoe = new THREE.Mesh(shoeGeo, shoesBlue);
+        rightShoe.position.set(0.12, 0.38, 0.04);
+        bart.add(rightShoe);
+
+        return bart;
+      }
+
+      // ========================================================
+      // Scene setup (shared)
+      // ========================================================
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x2a2a3e);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const dir1 = new THREE.DirectionalLight(0xffffff, 1.0);
+      dir1.position.set(3, 5, 4);
+      scene.add(dir1);
+      const dir2 = new THREE.DirectionalLight(0xffffff, 0.4);
+      dir2.position.set(-3, 3, -2);
+      scene.add(dir2);
+
+      // Ground plane
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(10, 10),
+        new THREE.MeshStandardMaterial({ color: 0x3a3a4e })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = 0.33;
+      scene.add(ground);
+
+      // Grid helper for spatial reference
+      const gridHelper = new THREE.GridHelper(6, 12, 0x555577, 0x333355);
+      gridHelper.position.y = 0.331;
+      scene.add(gridHelper);
+
+      const bart = buildBart();
+      scene.add(bart);
+
+      // ========================================================
+      // Create view panels with individual canvases
+      // ========================================================
+      const CANVAS_W = 600;
+      const CANVAS_H = 600;
+
+      const grid = document.getElementById('grid');
+      const viewEntries = [];
+
+      for (const view of VIEWS) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'view';
+
+        const canvas = document.createElement('canvas');
+        canvas.width = CANVAS_W;
+        canvas.height = CANVAS_H;
+        wrapper.appendChild(canvas);
+
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = view.name;
+        wrapper.appendChild(label);
+
+        const p = Array.isArray(view.pos) ? view.pos : [view.pos.x, view.pos.y, view.pos.z];
+        const coords = document.createElement('div');
+        coords.className = 'coords';
+        coords.textContent = `cam (${p.map(n => n.toFixed(1)).join(', ')})`;
+        wrapper.appendChild(coords);
+
+        grid.appendChild(wrapper);
+
+        const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+        camera.position.set(...p);
+        camera.lookAt(view.lookAt);
+
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(CANVAS_W, CANVAS_H);
+        renderer.setPixelRatio(1); // 1:1 for clean screenshots
+
+        viewEntries.push({ view, camera, renderer, canvas });
+      }
+
+      // ========================================================
+      // Render all views once (static inspection)
+      // ========================================================
+      function renderAll() {
+        for (const { camera, renderer } of viewEntries) {
+          renderer.render(scene, camera);
+        }
+      }
+      renderAll();
+
+      // ========================================================
+      // Download screenshots
+      // ========================================================
+      document.getElementById('downloadBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('downloadBtn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        // Short delay so the UI updates
+        await new Promise(r => setTimeout(r, 50));
+
+        for (const { view, canvas } of viewEntries) {
+          const slug = view.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          const link = document.createElement('a');
+          link.download = `bart-${slug}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+
+          // Small delay between downloads to avoid browser throttling
+          await new Promise(r => setTimeout(r, 120));
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Download All Screenshots';
+      });
+    </script>
+  </body>
+</html>
