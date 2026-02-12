@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Reusable package entrypoint at `js/index.js` with exports for engines, controllers, and shared config.
+- Embeddable `createAvatarViewer` API (`js/lib/avatar-viewer.js`) for quickly mounting avatars in other apps without the studio UI.
+
+### Changed
+
+- Updated package metadata (`main`, `exports`, `files`, keywords) to support direct importing from other projects.
+- Expanded README with integration instructions for using the project as a reusable module.
+
 ## [2026-02-11]
 
 ### Added

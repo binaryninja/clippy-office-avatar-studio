@@ -13,6 +13,8 @@ Bundled Three.js avatar studio featuring:
 - `index.html`: single studio page for all avatars
 - `css/studio.css`: UI styling
 - `js/studio.js`: app runtime + dynamic settings panel
+- `js/index.js`: reusable package entrypoint
+- `js/lib/avatar-viewer.js`: embeddable viewer API for non-studio projects
 - `js/config/avatars.js`: model definitions, defaults, and control schema
 - `js/avatars/clippy-controller.js`: Clippy runtime wrapper
 - `js/avatars/thumbtack-controller.js`: Pushy/Tacky runtime wrapper
@@ -29,6 +31,40 @@ npm run dev -- --host 127.0.0.1 --port 4173
 ```
 
 Open [http://127.0.0.1:4173](http://127.0.0.1:4173).
+
+## Use in other projects
+
+Install the package in another project and import from `office-avatar-studio`.
+
+```js
+import { createAvatarViewer } from "office-avatar-studio";
+
+const canvas = document.querySelector("#avatarCanvas");
+const viewer = createAvatarViewer({
+  canvas,
+  avatarId: "clippy",
+  stageTopY: 0,
+  sceneBackground: "#080f1d",
+});
+
+viewer.setState({
+  mode: "wave",
+  expression: "happy",
+});
+```
+
+The returned `viewer` exposes:
+
+- `setAvatar(id, { state?, carryState? })`
+- `setState(nextState, { force? })`
+- `getState()`
+- `getCatalog()`
+- `randomize()`
+- `reset()`
+- `resize(width?, height?)`
+- `dispose()`
+
+`js/index.js` also exports lower-level building blocks (`createClippy3D`, `createThumbTackAvatar`, controllers, config constants, and utility helpers) if you want custom scene integration.
 
 ## Build and preview
 
