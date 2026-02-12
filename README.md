@@ -33,6 +33,14 @@ npm run dev -- --host 127.0.0.1 --port 4173
 
 Open [http://127.0.0.1:4173](http://127.0.0.1:4173).
 
+## Clippy Presenter + Excalidraw
+
+Open [http://127.0.0.1:4173/clippy-presentation.html](http://127.0.0.1:4173/clippy-presentation.html).
+
+- Use `Load Demo` for the built-in ServiceNow AI risk deck.
+- Import your own `.excalidraw` file from `Scene File`.
+- If your scene uses Excalidraw frames, each frame becomes a slide that Clippy can present.
+
 ## Build and preview
 
 ```bash
