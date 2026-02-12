@@ -56,6 +56,92 @@ function expressionProfile(expression) {
   };
 }
 
+function sampleModePose(mode, t) {
+  if (mode === "bob") {
+    return {
+      hop: Math.abs(Math.sin(t * 4)) * 0.16,
+      sway: Math.sin(t * 3.2) * 0.08,
+      bodyTiltX: Math.sin(t * 4.3) * 0.08,
+      bodyTiltZ: Math.sin(t * 4.9) * 0.09,
+      spinY: Math.sin(t * 0.9) * 0.02,
+      leftShoulder: -0.18,
+      rightShoulder: 0.18,
+      leftElbow: -0.12,
+      rightElbow: 0.12,
+    };
+  }
+
+  if (mode === "wave") {
+    return {
+      hop: Math.abs(Math.sin(t * 3.1)) * 0.1,
+      sway: Math.sin(t * 2.1) * 0.05,
+      bodyTiltX: Math.sin(t * 3.8) * 0.04,
+      bodyTiltZ: Math.sin(t * 2.8) * 0.06,
+      spinY: Math.sin(t * 0.9) * 0.02,
+      leftShoulder: -0.12,
+      rightShoulder: -1.02 + Math.sin(t * 8.3) * 0.22,
+      leftElbow: -0.1,
+      rightElbow: -0.84 + Math.sin(t * 8.3 + 0.8) * 0.36,
+    };
+  }
+
+  if (mode === "spin") {
+    return {
+      hop: Math.abs(Math.sin(t * 3.1)) * 0.08,
+      sway: Math.sin(t * 2.4) * 0.02,
+      bodyTiltX: Math.sin(t * 5.1) * 0.04,
+      bodyTiltZ: Math.sin(t * 5.6) * 0.07,
+      spinY: t * 2.25,
+      leftShoulder: -0.24,
+      rightShoulder: 0.24,
+      leftElbow: 0,
+      rightElbow: 0,
+    };
+  }
+
+  if (mode === "celebrate") {
+    return {
+      hop: Math.abs(Math.sin(t * 6)) * 0.24,
+      sway: Math.sin(t * 7.2) * 0.13,
+      bodyTiltX: Math.sin(t * 7.4) * 0.1,
+      bodyTiltZ: Math.sin(t * 12.4) * 0.14,
+      spinY: Math.sin(t * 9.2) * 0.24,
+      leftShoulder: -0.94 + Math.sin(t * 12) * 0.3,
+      rightShoulder: 0.94 - Math.sin(t * 12) * 0.3,
+      leftElbow: -0.5 + Math.sin(t * 13.4) * 0.28,
+      rightElbow: 0.5 - Math.sin(t * 13.4) * 0.28,
+    };
+  }
+
+  return {
+    hop: Math.abs(Math.sin(t * 2.1)) * 0.04,
+    sway: Math.sin(t * 1.3) * 0.03,
+    bodyTiltX: Math.sin(t * 1.7) * 0.02,
+    bodyTiltZ: Math.sin(t * 1.9) * 0.03,
+    spinY: Math.sin(t * 0.9) * 0.02,
+    leftShoulder: 0,
+    rightShoulder: 0,
+    leftElbow: 0,
+    rightElbow: 0,
+  };
+}
+
+function blendModePose(fromPose, toPose, blend) {
+  const lerp = (fromValue, toValue) => fromValue + (toValue - fromValue) * blend;
+
+  return {
+    hop: lerp(fromPose.hop, toPose.hop),
+    sway: lerp(fromPose.sway, toPose.sway),
+    bodyTiltX: lerp(fromPose.bodyTiltX, toPose.bodyTiltX),
+    bodyTiltZ: lerp(fromPose.bodyTiltZ, toPose.bodyTiltZ),
+    spinY: lerp(fromPose.spinY, toPose.spinY),
+    leftShoulder: lerp(fromPose.leftShoulder, toPose.leftShoulder),
+    rightShoulder: lerp(fromPose.rightShoulder, toPose.rightShoulder),
+    leftElbow: lerp(fromPose.leftElbow, toPose.leftElbow),
+    rightElbow: lerp(fromPose.rightElbow, toPose.rightElbow),
+  };
+}
+
 export function createTowelyController({ THREE, scene, initialState, stageTopY }) {
   const state = { ...initialState };
   const avatar = createTowelyAvatar(THREE, state);
@@ -68,12 +154,24 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     lookTargetX: 0,
     lookTargetY: 0,
     eyeBaseY: 0.02,
+    eyeScale: 1,
+    eyeOvalY: 1.2,
+    pupilBaseScale: 1,
     leftShoulderBase: -0.62,
     rightShoulderBase: 0.62,
     leftElbowBase: 0.45,
     rightElbowBase: -0.45,
     baseX: 0,
     baseY: stageTopY,
+    foldSwingX: 0,
+    foldSwingZ: 0,
+    leftArmFollow: 0,
+    rightArmFollow: 0,
+    currentMode: MODE_CHOICES.includes(state.mode) ? state.mode : MODE_CHOICES[0],
+    previousMode: MODE_CHOICES.includes(state.mode) ? state.mode : MODE_CHOICES[0],
+    modeBlend: 1,
+    blinkTimer: 0,
+    blinkOffset: 0.34,
   };
 
   function updateMaterials() {
@@ -83,21 +181,21 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     avatar.materials.cloth.clearcoat = clamp(state.clearcoat, 0, 1);
     avatar.materials.cloth.clearcoatRoughness = clamp(state.clearcoatRoughness, 0, 1);
     avatar.materials.cloth.emissive.set(state.glowColor);
-    avatar.materials.cloth.emissiveIntensity = clamp(state.glowIntensity * 0.22, 0, 1);
+    avatar.materials.cloth.emissiveIntensity = clamp(state.glowIntensity * 0.2, 0, 1);
     avatar.materials.cloth.needsUpdate = true;
 
     avatar.materials.fold.color.set(state.foldColor);
-    avatar.materials.fold.metalness = clamp(state.metalness * 0.42, 0, 1);
-    avatar.materials.fold.roughness = clamp(state.roughness * 0.84, 0, 1);
-    avatar.materials.fold.clearcoat = clamp(state.clearcoat, 0, 1);
-    avatar.materials.fold.clearcoatRoughness = clamp(state.clearcoatRoughness * 0.88, 0, 1);
+    avatar.materials.fold.metalness = clamp(state.metalness * 0.2, 0, 1);
+    avatar.materials.fold.roughness = clamp(state.roughness * 0.94, 0, 1);
+    avatar.materials.fold.clearcoat = clamp(state.clearcoat * 0.7, 0, 1);
+    avatar.materials.fold.clearcoatRoughness = clamp(state.clearcoatRoughness * 0.96, 0, 1);
     avatar.materials.fold.emissive.set(state.glowColor);
-    avatar.materials.fold.emissiveIntensity = clamp(state.glowIntensity * 0.12, 0, 1);
+    avatar.materials.fold.emissiveIntensity = clamp(state.glowIntensity * 0.1, 0, 1);
     avatar.materials.fold.needsUpdate = true;
 
     avatar.materials.stripe.color.set(state.stripeColor);
     avatar.materials.stripe.emissive.set(state.glowColor);
-    avatar.materials.stripe.emissiveIntensity = clamp(state.glowIntensity * 0.32, 0, 1);
+    avatar.materials.stripe.emissiveIntensity = clamp(state.glowIntensity * 0.24, 0, 1);
     avatar.materials.stripe.needsUpdate = true;
 
     avatar.materials.skin.color.set(state.skinColor);
@@ -106,12 +204,15 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     avatar.materials.hair.color.set(state.hairColor);
     avatar.materials.hair.needsUpdate = true;
 
+    avatar.materials.eyeWhite.color.set(state.eyeColor || "#f5f7ff");
+    avatar.materials.eyeWhite.needsUpdate = true;
+
     avatar.materials.dark.color.set(state.darkColor);
     avatar.materials.dark.needsUpdate = true;
 
     avatar.materials.shoe.color.set(state.shoeColor);
     avatar.materials.shoe.emissive.set(state.glowColor);
-    avatar.materials.shoe.emissiveIntensity = clamp(state.glowIntensity * 0.18, 0, 1);
+    avatar.materials.shoe.emissiveIntensity = clamp(state.glowIntensity * 0.16, 0, 1);
     avatar.materials.shoe.needsUpdate = true;
   }
 
@@ -120,7 +221,7 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
 
     avatar.group.scale.setScalar(state.scale);
     avatar.bodyRoot.scale.set(state.bodyWidth, state.bodyHeight, state.bodyDepth);
-    avatar.faceRoot.position.set(0, 0.32 + state.faceY, 0.26 + state.faceZ);
+    avatar.faceRoot.position.set(0, 0.2 + state.faceY, 0.19 + state.faceZ);
     avatar.foldMesh.position.y = state.foldHeight;
 
     avatar.stripes[0].position.y = 1.6 + state.stripeOffset;
@@ -129,34 +230,35 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     avatar.stripes[3].position.y = -2.15 - state.stripeOffset * 0.45;
 
     const eyeScale = clamp(state.eyeScale * expr.eyeScale, 0.5, 2.2);
+    runtime.eyeScale = eyeScale;
     runtime.eyeBaseY = 0.02 + expr.eyeY;
+    runtime.eyeOvalY = clamp(1.05 + eyeScale * 0.24, 0.96, 1.72);
+    runtime.pupilBaseScale = clamp(0.84 + eyeScale * 0.11, 0.74, 1.16);
 
-    avatar.leftEye.scale.setScalar(eyeScale);
-    avatar.rightEye.scale.setScalar(eyeScale);
-    avatar.leftEye.position.set(-state.eyeSpacing, runtime.eyeBaseY, 0.22);
-    avatar.rightEye.position.set(state.eyeSpacing, runtime.eyeBaseY, 0.22);
+    avatar.leftEyeRoot.position.set(-state.eyeSpacing, runtime.eyeBaseY, 0.22);
+    avatar.rightEyeRoot.position.set(state.eyeSpacing, runtime.eyeBaseY, 0.22);
 
-    const browY = 0.48 + state.browLift + expr.browLift;
+    avatar.leftEye.scale.set(eyeScale, runtime.eyeOvalY, 1);
+    avatar.rightEye.scale.set(eyeScale, runtime.eyeOvalY, 1);
+    avatar.leftPupil.scale.set(runtime.pupilBaseScale, runtime.pupilBaseScale, 1);
+    avatar.rightPupil.scale.set(runtime.pupilBaseScale, runtime.pupilBaseScale, 1);
+    avatar.leftPupil.position.set(0, 0, 0.002);
+    avatar.rightPupil.position.set(0, 0, 0.002);
+
+    const browY = 0.31 + state.browLift + expr.browLift;
     const browTilt = state.browTilt + expr.browTilt;
 
-    avatar.leftBrow.position.set(-state.eyeSpacing - 0.14, browY, 0.2);
-    avatar.rightBrow.position.set(state.eyeSpacing + 0.14, browY, 0.2);
-    avatar.leftBrow.rotation.z = -0.2 - browTilt;
-    avatar.rightBrow.rotation.z = 0.2 + browTilt;
+    avatar.leftBrow.position.set(-state.eyeSpacing - 0.1, browY, 0.2);
+    avatar.rightBrow.position.set(state.eyeSpacing + 0.1, browY, 0.2);
+    avatar.leftBrow.rotation.z = -0.12 - browTilt * 0.74;
+    avatar.rightBrow.rotation.z = 0.12 + browTilt * 0.74;
 
     const mouthWidth = clamp(state.mouthWidth * expr.mouthWidth, 0.6, 1.8);
     const mouthOpen = clamp(state.mouthOpen + expr.mouthOpen, 0, 1.3);
 
-    avatar.mouthRoot.position.set(0, -0.36 + expr.mouthY, 0.2);
+    avatar.mouthRoot.position.set(0, -0.18 + expr.mouthY * 0.45, 0.2);
     avatar.mouthRoot.rotation.z = expr.mouthTilt;
-
-    avatar.mouthShell.scale.set(mouthWidth, 0.92 + mouthOpen * 0.24, 1);
-
-    const biteShift = 0.01 + mouthOpen * 0.07;
-    avatar.leftTooth.position.set(-0.11 * mouthWidth, 0.03 + biteShift, 0.15);
-    avatar.rightTooth.position.set(0.03 * mouthWidth, 0.03 + biteShift, 0.15);
-    avatar.tongue.position.set(0.08 * mouthWidth, -0.08 + mouthOpen * 0.05, 0.14);
-    avatar.tongue.scale.set(1, 1 + mouthOpen * 0.45, 1);
+    avatar.smile.scale.set(0.88 * mouthWidth, 0.86 + mouthOpen * 0.16, 1);
 
     const shoulderX = state.bodyWidth * 1.08 + state.armSpread * 0.44;
     avatar.leftArm.shoulder.position.set(-shoulderX, state.armY, 0);
@@ -188,72 +290,61 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     runtime.baseY = stageTopY - shoeBottomY * state.scale + 0.01;
   }
 
-  function applyAnimationFrame(dt) {
-    runtime.elapsed += dt;
-    const t = runtime.elapsed;
-
-    let hop = Math.abs(Math.sin(t * 2.1)) * 0.04;
-    let sway = Math.sin(t * 1.3) * 0.03;
-    let bodyTiltX = Math.sin(t * 1.7) * 0.02;
-    let bodyTiltZ = Math.sin(t * 1.9) * 0.03;
-    let spinY = Math.sin(t * 0.9) * 0.02;
-
-    let leftShoulderAnim = 0;
-    let rightShoulderAnim = 0;
-    let leftElbowAnim = 0;
-    let rightElbowAnim = 0;
-
-    if (state.mode === "bob") {
-      hop = Math.abs(Math.sin(t * 4)) * 0.16;
-      sway = Math.sin(t * 3.2) * 0.08;
-      bodyTiltX = Math.sin(t * 4.3) * 0.08;
-      bodyTiltZ = Math.sin(t * 4.9) * 0.09;
-      leftShoulderAnim = -0.18;
-      rightShoulderAnim = 0.18;
-      leftElbowAnim = -0.12;
-      rightElbowAnim = 0.12;
-    } else if (state.mode === "wave") {
-      hop = Math.abs(Math.sin(t * 3.1)) * 0.1;
-      sway = Math.sin(t * 2.1) * 0.05;
-      bodyTiltX = Math.sin(t * 3.8) * 0.04;
-      bodyTiltZ = Math.sin(t * 2.8) * 0.06;
-      leftShoulderAnim = -0.12;
-      leftElbowAnim = -0.1;
-      rightShoulderAnim = -1.02 + Math.sin(t * 8.3) * 0.22;
-      rightElbowAnim = -0.84 + Math.sin(t * 8.3 + 0.8) * 0.36;
-    } else if (state.mode === "spin") {
-      hop = Math.abs(Math.sin(t * 3.1)) * 0.08;
-      sway = Math.sin(t * 2.4) * 0.02;
-      bodyTiltX = Math.sin(t * 5.1) * 0.04;
-      bodyTiltZ = Math.sin(t * 5.6) * 0.07;
-      spinY = t * 2.25;
-      leftShoulderAnim = -0.24;
-      rightShoulderAnim = 0.24;
-    } else if (state.mode === "celebrate") {
-      hop = Math.abs(Math.sin(t * 6)) * 0.24;
-      sway = Math.sin(t * 7.2) * 0.13;
-      bodyTiltX = Math.sin(t * 7.4) * 0.1;
-      bodyTiltZ = Math.sin(t * 12.4) * 0.14;
-      spinY = Math.sin(t * 9.2) * 0.24;
-      leftShoulderAnim = -0.94 + Math.sin(t * 12) * 0.3;
-      rightShoulderAnim = 0.94 - Math.sin(t * 12) * 0.3;
-      leftElbowAnim = -0.5 + Math.sin(t * 13.4) * 0.28;
-      rightElbowAnim = 0.5 - Math.sin(t * 13.4) * 0.28;
+  function syncModeTransition({ force = false } = {}) {
+    if (force) {
+      runtime.previousMode = state.mode;
+      runtime.currentMode = state.mode;
+      runtime.modeBlend = 1;
+      return;
     }
 
-    avatar.group.position.x = runtime.baseX + sway;
-    avatar.group.position.y = runtime.baseY + hop;
-    avatar.group.rotation.y = spinY;
+    if (state.mode !== runtime.currentMode) {
+      runtime.previousMode = runtime.currentMode;
+      runtime.currentMode = state.mode;
+      runtime.modeBlend = 0;
+    }
+  }
 
-    avatar.bodyShell.rotation.x = bodyTiltX;
-    avatar.bodyShell.rotation.z = bodyTiltZ;
-    avatar.faceRoot.rotation.x = bodyTiltX * 0.24;
-    avatar.faceRoot.rotation.z = bodyTiltZ * 0.34;
+  function applyAnimationFrame(dt) {
+    runtime.elapsed += dt;
+    runtime.blinkTimer += dt;
 
-    avatar.leftArm.shoulder.rotation.z = runtime.leftShoulderBase + leftShoulderAnim;
-    avatar.rightArm.shoulder.rotation.z = runtime.rightShoulderBase + rightShoulderAnim;
-    avatar.leftArm.elbow.rotation.z = runtime.leftElbowBase + leftElbowAnim;
-    avatar.rightArm.elbow.rotation.z = runtime.rightElbowBase + rightElbowAnim;
+    const t = runtime.elapsed;
+    runtime.modeBlend = Math.min(1, runtime.modeBlend + dt / 0.24);
+
+    const easedBlend = runtime.modeBlend * runtime.modeBlend * (3 - 2 * runtime.modeBlend);
+    const fromPose = sampleModePose(runtime.previousMode, t);
+    const toPose = sampleModePose(runtime.currentMode, t);
+    const pose = blendModePose(fromPose, toPose, easedBlend);
+
+    if (runtime.modeBlend >= 1) {
+      runtime.previousMode = runtime.currentMode;
+    }
+
+    avatar.group.position.x = runtime.baseX + pose.sway;
+    avatar.group.position.y = runtime.baseY + pose.hop;
+    avatar.group.rotation.y = pose.spinY;
+
+    avatar.bodyShell.rotation.x = pose.bodyTiltX;
+    avatar.bodyShell.rotation.z = pose.bodyTiltZ;
+    avatar.faceRoot.rotation.x = pose.bodyTiltX * 0.24;
+    avatar.faceRoot.rotation.z = pose.bodyTiltZ * 0.34;
+
+    const followSmoothing = Math.min(1, dt * 7.4);
+    runtime.foldSwingX += (pose.bodyTiltX * 0.42 - runtime.foldSwingX) * followSmoothing;
+    runtime.foldSwingZ += (pose.bodyTiltZ * -0.36 + pose.sway * 0.48 - runtime.foldSwingZ) * followSmoothing;
+    avatar.foldMesh.rotation.x = runtime.foldSwingX + Math.sin(t * 2.4) * 0.01;
+    avatar.foldMesh.rotation.z = runtime.foldSwingZ;
+
+    runtime.leftArmFollow +=
+      (pose.leftShoulder * 0.25 + pose.bodyTiltZ * 0.16 - runtime.leftArmFollow) * followSmoothing;
+    runtime.rightArmFollow +=
+      (pose.rightShoulder * 0.25 + pose.bodyTiltZ * 0.16 - runtime.rightArmFollow) * followSmoothing;
+
+    avatar.leftArm.shoulder.rotation.z = runtime.leftShoulderBase + pose.leftShoulder;
+    avatar.rightArm.shoulder.rotation.z = runtime.rightShoulderBase + pose.rightShoulder;
+    avatar.leftArm.elbow.rotation.z = runtime.leftElbowBase + pose.leftElbow + runtime.leftArmFollow * 0.18;
+    avatar.rightArm.elbow.rotation.z = runtime.rightElbowBase + pose.rightElbow + runtime.rightArmFollow * 0.18;
 
     const lookSmoothing = Math.min(1, dt * 10);
     runtime.lookX += (runtime.lookTargetX - runtime.lookX) * lookSmoothing;
@@ -262,10 +353,29 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     const lookX = clamp(runtime.lookX, -0.08, 0.08);
     const lookY = clamp(runtime.lookY, -0.055, 0.055);
 
-    avatar.leftEye.position.x = -state.eyeSpacing + lookX;
-    avatar.rightEye.position.x = state.eyeSpacing + lookX;
-    avatar.leftEye.position.y = runtime.eyeBaseY + lookY;
-    avatar.rightEye.position.y = runtime.eyeBaseY + lookY;
+    const pupilX = lookX * 0.6;
+    const pupilY = lookY * 0.62;
+
+    const blinkInterval = 2.8;
+    const blinkDuration = 0.16;
+    const blinkPhase = (runtime.blinkTimer + runtime.blinkOffset) % blinkInterval;
+    let blink = 0;
+
+    if (blinkPhase > blinkInterval - blinkDuration) {
+      const phase = (blinkPhase - (blinkInterval - blinkDuration)) / blinkDuration;
+      blink = Math.sin(phase * Math.PI);
+    }
+
+    const eyelidScale = clamp(1 - blink * 0.88, 0.12, 1);
+    const pupilYScale = clamp(1 - blink * 0.7, 0.25, 1);
+
+    avatar.leftEye.scale.set(runtime.eyeScale, runtime.eyeOvalY * eyelidScale, 1);
+    avatar.rightEye.scale.set(runtime.eyeScale, runtime.eyeOvalY * eyelidScale, 1);
+
+    avatar.leftPupil.position.set(pupilX, pupilY - blink * 0.004, 0.002);
+    avatar.rightPupil.position.set(pupilX, pupilY - blink * 0.004, 0.002);
+    avatar.leftPupil.scale.set(runtime.pupilBaseScale, runtime.pupilBaseScale * pupilYScale, 1);
+    avatar.rightPupil.scale.set(runtime.pupilBaseScale, runtime.pupilBaseScale * pupilYScale, 1);
   }
 
   function setState(nextState = {}, { force = false } = {}) {
@@ -276,8 +386,10 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
 
     if (force) {
       runtime.elapsed = 0;
+      runtime.blinkTimer = 0;
     }
 
+    syncModeTransition({ force });
     applyShapeState();
     updateMaterials();
   }
