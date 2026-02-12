@@ -255,6 +255,12 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     update,
     setVoiceActivity,
     dispose,
+    getAnchors() {
+      return {
+        head: avatar.faceRoot,
+        body: avatar.body,
+      };
+    },
     getCatalog() {
       return {
         modes: [...MODE_CHOICES],
