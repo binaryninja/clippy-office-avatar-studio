@@ -1,5 +1,6 @@
 import { createTowelyAvatar } from "../lib/towely-factory.js";
 import { clamp } from "../lib/utils.js";
+import { registerEngine } from "../engines.js";
 
 const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate"];
 const EXPRESSION_CHOICES = ["neutral", "smug", "angry", "startled"];
@@ -459,3 +460,5 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY }
     },
   };
 }
+
+registerEngine("towely", createTowelyController);

@@ -2,6 +2,7 @@ import { officePackPlugin } from "../lib/clippy-3d-plugin-examples.js";
 import { createClippy3D } from "../lib/clippy-3d.js";
 import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
+import { registerEngine } from "../engines.js";
 
 const FALLBACK_MODES = ["idle", "wave", "celebrate", "spin", "point"];
 const EXPRESSION_CHOICES = ["neutral", "happy", "focused", "surprised"];
@@ -572,3 +573,5 @@ export function createClippyController({ THREE, scene, initialState }) {
     },
   };
 }
+
+registerEngine("clippy", createClippyController);

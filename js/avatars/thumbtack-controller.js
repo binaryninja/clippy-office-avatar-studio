@@ -1,5 +1,6 @@
 import { createThumbTackAvatar, expressionProfile } from "../lib/thumbtack-factory.js";
 import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
+import { registerEngine } from "../engines.js";
 
 const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate"];
 const EXPRESSION_CHOICES = ["neutral", "smile", "determined", "startled"];
@@ -263,3 +264,5 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     },
   };
 }
+
+registerEngine("thumbtack", createThumbtackController);
