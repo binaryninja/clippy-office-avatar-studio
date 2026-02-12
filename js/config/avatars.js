@@ -48,6 +48,18 @@ const clippyFields = [
     ],
   },
   {
+    title: "Mouth Placement",
+    fields: [
+      { key: "mouthRigX", label: "Mouth X", type: "range", min: -0.5, max: 0.5, step: 0.01 },
+      { key: "mouthRigY", label: "Mouth Y", type: "range", min: -0.5, max: 0.5, step: 0.01 },
+      { key: "mouthRigZ", label: "Mouth Z", type: "range", min: -0.3, max: 0.3, step: 0.01 },
+      { key: "mouthRigScale", label: "Mouth Scale", type: "range", min: 0.3, max: 2.5, step: 0.01 },
+      { key: "mouthRigRotX", label: "Mouth Tilt X", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "mouthRigRotY", label: "Mouth Tilt Y", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "mouthRigRotZ", label: "Mouth Tilt Z", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+    ],
+  },
+  {
     title: "Shape",
     fields: [
       { key: "scale", label: "Body Scale", type: "range", min: 0.35, max: 2.2, step: 0.01 },
@@ -134,6 +146,18 @@ const pinFields = [
     ],
   },
   {
+    title: "Mouth Placement",
+    fields: [
+      { key: "mouthRigX", label: "Mouth X", type: "range", min: -0.5, max: 0.5, step: 0.01 },
+      { key: "mouthRigY", label: "Mouth Y", type: "range", min: -0.5, max: 0.5, step: 0.01 },
+      { key: "mouthRigZ", label: "Mouth Z", type: "range", min: -0.3, max: 0.3, step: 0.01 },
+      { key: "mouthRigScale", label: "Mouth Scale", type: "range", min: 0.3, max: 2.5, step: 0.01 },
+      { key: "mouthRigRotX", label: "Mouth Tilt X", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "mouthRigRotY", label: "Mouth Tilt Y", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "mouthRigRotZ", label: "Mouth Tilt Z", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+    ],
+  },
+  {
     title: "Shape",
     fields: [
       { key: "scale", label: "Body Scale", type: "range", min: 0.4, max: 2.2, step: 0.01 },
@@ -217,6 +241,18 @@ const towelyFields = [
     ],
   },
   {
+    title: "Mouth Placement",
+    fields: [
+      { key: "mouthRigX", label: "Mouth X", type: "range", min: -0.5, max: 0.5, step: 0.01 },
+      { key: "mouthRigY", label: "Mouth Y", type: "range", min: -0.5, max: 0.5, step: 0.01 },
+      { key: "mouthRigZ", label: "Mouth Z", type: "range", min: -0.3, max: 0.3, step: 0.01 },
+      { key: "mouthRigScale", label: "Mouth Scale", type: "range", min: 0.3, max: 2.5, step: 0.01 },
+      { key: "mouthRigRotX", label: "Mouth Tilt X", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "mouthRigRotY", label: "Mouth Tilt Y", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "mouthRigRotZ", label: "Mouth Tilt Z", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+    ],
+  },
+  {
     title: "Shape",
     fields: [
       { key: "scale", label: "Body Scale", type: "range", min: 0.4, max: 2.2, step: 0.01 },
@@ -283,6 +319,14 @@ export const AVATAR_DEFINITIONS = {
       propRotY: 0,
       propRotZ: 0,
 
+      mouthRigX: 0,
+      mouthRigY: -0.34,
+      mouthRigZ: 0,
+      mouthRigScale: 1,
+      mouthRigRotX: 0,
+      mouthRigRotY: 0,
+      mouthRigRotZ: 0,
+
       scale: 0.54,
       wireThickness: 1.79,
       headScale: 1,
@@ -338,6 +382,14 @@ export const AVATAR_DEFINITIONS = {
       propRotY: 0,
       propRotZ: 0,
 
+      mouthRigX: 0,
+      mouthRigY: -0.11,
+      mouthRigZ: 0.062,
+      mouthRigScale: 0.5,
+      mouthRigRotX: 0,
+      mouthRigRotY: 0,
+      mouthRigRotZ: 0,
+
       scale: 0.72,
       wireThickness: 0.024,
       crownWidth: 1.29,
@@ -390,6 +442,14 @@ export const AVATAR_DEFINITIONS = {
       propRotY: 0,
       propRotZ: 0,
 
+      mouthRigX: 0,
+      mouthRigY: -0.11,
+      mouthRigZ: 0.062,
+      mouthRigScale: 0.5,
+      mouthRigRotX: 0,
+      mouthRigRotY: 0,
+      mouthRigRotZ: 0,
+
       scale: 0.74,
       wireThickness: 0.03,
       crownWidth: 1.36,
@@ -440,6 +500,14 @@ export const AVATAR_DEFINITIONS = {
       propRotX: 0,
       propRotY: 0,
       propRotZ: 0,
+
+      mouthRigX: 0,
+      mouthRigY: -0.18,
+      mouthRigZ: 0.2,
+      mouthRigScale: 1.2,
+      mouthRigRotX: 0,
+      mouthRigRotY: 0,
+      mouthRigRotZ: 0,
 
       scale: 0.73,
       bodyWidth: 1,

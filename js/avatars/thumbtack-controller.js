@@ -2,11 +2,13 @@ import { createThumbTackAvatar, expressionProfile } from "../lib/thumbtack-facto
 import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
 import { registerEngine } from "../engines.js";
 import { createPropManager, listSharedProps, getSharedProp, loadPropPlacement, savePropPlacement, applyPlacementToObject } from "../lib/prop-system.js";
+import { createUniversalMouth } from "../lib/mouth-rig.js";
 import "../lib/shared-props.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
 const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate"];
 const EXPRESSION_CHOICES = ["neutral", "smile", "determined", "startled"];
+const SIL_VISEME = "sil";
 const THUMBTACK_EYE_RADIUS = 0.07;
 const THUMBTACK_PUPIL_RADIUS = 0.033;
 const THUMBTACK_PUPIL_SURFACE_SETTINGS = Object.freeze({
@@ -19,6 +21,24 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
   const state = { ...initialState };
   const avatar = createThumbTackAvatar(THREE, state, profile);
   scene.add(avatar.group);
+
+  // Create universal mouth rig and attach to face
+  const mouthRig = createUniversalMouth({
+    THREE,
+    anchor: avatar.faceRoot,
+    options: {
+      lipColor: 0xb53b4e,
+      cavityColor: new THREE.Color(state.darkColor).multiplyScalar(0.4).getHex(),
+      tongueColor: 0x7d3445,
+      shadowColor: new THREE.Color(state.darkColor).multiplyScalar(0.26).getHex(),
+      shadowOpacity: 0.6,
+    },
+  });
+
+  // Hide the old simple mouth line (if desired)
+  if (avatar.mouth) {
+    avatar.mouth.visible = false;
+  }
 
   const geometryCache = {
     shapeKey: "",
@@ -40,8 +60,8 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     baseY: 0,
     expression: expressionProfile(state.expression),
     voiceTarget: 0,
-    voiceCurrent: 0,
-    voicePhase: Math.random() * Math.PI * 2,
+    visemeKey: SIL_VISEME,
+    visemeStrength: 0,
   };
 
   function updateMaterials() {
@@ -206,21 +226,54 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     });
   }
 
+  function loadMouthPlacement() {
+    const storageKey = `mouth-placement:${avatarId}`;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        state.mouthRigX = parsed.x ?? state.mouthRigX;
+        state.mouthRigY = parsed.y ?? state.mouthRigY;
+        state.mouthRigZ = parsed.z ?? state.mouthRigZ;
+        state.mouthRigScale = parsed.scale ?? state.mouthRigScale;
+        state.mouthRigRotX = parsed.rotX ?? state.mouthRigRotX;
+        state.mouthRigRotY = parsed.rotY ?? state.mouthRigRotY;
+        state.mouthRigRotZ = parsed.rotZ ?? state.mouthRigRotZ;
+      }
+    } catch { /* ignore */ }
+  }
+
+  function saveMouthPlacement() {
+    const storageKey = `mouth-placement:${avatarId}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({
+        x: state.mouthRigX,
+        y: state.mouthRigY,
+        z: state.mouthRigZ,
+        scale: state.mouthRigScale,
+        rotX: state.mouthRigRotX,
+        rotY: state.mouthRigRotY,
+        rotZ: state.mouthRigRotZ,
+      }));
+    } catch { /* ignore */ }
+  }
+
+  function applyMouthPlacement() {
+    if (!mouthRig?.group) return;
+    mouthRig.group.position.set(state.mouthRigX, state.mouthRigY, state.mouthRigZ);
+    mouthRig.group.scale.setScalar(state.mouthRigScale);
+    mouthRig.group.rotation.set(state.mouthRigRotX, state.mouthRigRotY, state.mouthRigRotZ);
+  }
+
   function applyVoiceFrame(dt) {
-    if (!avatar.mouth) return;
+    if (!mouthRig) return;
 
-    const smoothing = runtime.voiceTarget > runtime.voiceCurrent ? 0.38 : 0.2;
-    runtime.voiceCurrent += (runtime.voiceTarget - runtime.voiceCurrent) * smoothing;
-    if (runtime.voiceCurrent < 0.004) runtime.voiceCurrent = 0;
-
-    runtime.voicePhase += dt * (24 + runtime.voiceCurrent * 32);
-
-    const flutter = Math.sin(runtime.voicePhase) * 0.08 * runtime.voiceCurrent;
-    const open = clamp(runtime.voiceCurrent * 0.72 + flutter, 0, 1.2);
-    const widen = 1 + runtime.voiceCurrent * 0.16;
-
-    avatar.mouth.scale.set(widen, 1 + open, widen);
-    avatar.mouth.position.y = -0.11 + runtime.expression.mouthY - runtime.voiceCurrent * 0.018;
+    // Delegate voice animation to the universal mouth rig
+    mouthRig.applyVoiceFrame(dt, {
+      viseme: runtime.visemeKey,
+      visemeStrength: runtime.visemeStrength,
+      voiceActivity: runtime.voiceTarget,
+    });
   }
 
   function applyPropPlacement() {
@@ -277,6 +330,7 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     updateMaterials();
     syncProp(force);
     applyPropPlacement();
+    applyMouthPlacement();
     if (currentPropName !== NO_PROP_VALUE) {
       savePropPlacement(currentPropName, avatarId, {
         x: state.propX, y: state.propY, z: state.propZ,
@@ -284,6 +338,7 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
         rotX: state.propRotX, rotY: state.propRotY, rotZ: state.propRotZ,
       });
     }
+    saveMouthPlacement();
   }
 
   function update(dt, pointer) {
@@ -303,9 +358,11 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     runtime.voiceTarget = clamp(Number.isFinite(next) ? next : 0, 0, 1);
   }
 
-  function setVoiceViseme(_payload) {
-    // Thumbtack uses voice-activity-driven mouth animation;
-    // viseme-specific shaping is not yet implemented for this engine.
+  function setVoiceViseme(payload = null) {
+    const key = String(payload?.viseme || SIL_VISEME).toLowerCase();
+    runtime.visemeKey = key;
+    const nextStrength = Number(payload?.strength);
+    runtime.visemeStrength = clamp(Number.isFinite(nextStrength) ? nextStrength : 0, 0, 1);
   }
 
   function dispose() {
@@ -313,6 +370,9 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
     scene.remove(avatar.group);
     avatar.dispose();
   }
+
+  // Load saved mouth placement from localStorage
+  loadMouthPlacement();
 
   setState(state, { force: true });
 

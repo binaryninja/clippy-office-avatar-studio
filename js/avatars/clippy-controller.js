@@ -3,6 +3,7 @@ import { createClippy3D } from "../lib/clippy-3d.js";
 import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
 import { registerEngine } from "../engines.js";
 import { createPropManager, listSharedProps, getSharedProp, loadPropPlacement, savePropPlacement, applyPlacementToObject } from "../lib/prop-system.js";
+import { createUniversalMouth } from "../lib/mouth-rig.js";
 import "../lib/shared-props.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
@@ -76,98 +77,6 @@ function setMaterialEmissive(material, value, intensity) {
   material.needsUpdate = true;
 }
 
-function blendPose(base, target, amount) {
-  const mix = clamp(amount, 0, 1);
-  return {
-    open: base.open + (target.open - base.open) * mix,
-    width: base.width + (target.width - base.width) * mix,
-    round: base.round + (target.round - base.round) * mix,
-    press: base.press + (target.press - base.press) * mix,
-    jaw: base.jaw + (target.jaw - base.jaw) * mix,
-  };
-}
-
-function createMouthRig(THREE, sourceMouth) {
-  if (!sourceMouth || !sourceMouth.parent) return null;
-  const parent = sourceMouth.parent;
-  const basePosition = sourceMouth.position.clone();
-  const baseRotation = sourceMouth.rotation.clone();
-  const baseScale = sourceMouth.scale.clone();
-
-  // Root stays unrotated so width/height sliders scale on intuitive axes.
-  const group = new THREE.Group();
-  group.position.copy(basePosition);
-
-  // Inner pivot preserves original orientation of the original mouth mesh.
-  const shapeGroup = new THREE.Group();
-  shapeGroup.rotation.copy(baseRotation);
-  shapeGroup.scale.copy(baseScale);
-  group.add(shapeGroup);
-
-  const lipMaterial = sourceMouth.material?.clone?.()
-    || new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.2, roughness: 0.65 });
-  lipMaterial.color.setHex(LIP_COLOR);
-  const cavityMaterial = new THREE.MeshBasicMaterial({ color: 0x070b16 });
-  const shadowMaterial = new THREE.MeshBasicMaterial({
-    color: 0x02040a,
-    transparent: true,
-    opacity: 0.6,
-    depthWrite: false,
-  });
-  const tongueMaterial = new THREE.MeshStandardMaterial({
-    color: 0x7d3445,
-    metalness: 0.02,
-    roughness: 0.88,
-  });
-
-  const upperLip = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.024, 12, 38, Math.PI), lipMaterial);
-  upperLip.rotation.z = Math.PI;
-  upperLip.position.y = 0.008;
-
-  const lowerLip = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.026, 12, 38, Math.PI), lipMaterial);
-  lowerLip.position.y = -0.008;
-
-  const cavity = new THREE.Mesh(new THREE.CircleGeometry(0.13, 32), cavityMaterial);
-  cavity.position.z = -0.008;
-  cavity.scale.set(0.84, 0.08, 1);
-
-  const cavityShadow = new THREE.Mesh(new THREE.CircleGeometry(0.136, 32), shadowMaterial);
-  cavityShadow.position.set(0, -0.006, -0.018);
-  cavityShadow.scale.set(0.92, 0.12, 1);
-
-  const tongue = new THREE.Mesh(new THREE.CircleGeometry(0.078, 24), tongueMaterial);
-  tongue.position.set(0, -0.052, -0.014);
-  tongue.scale.set(0.72, 0.26, 1);
-  tongue.visible = false;
-
-  upperLip.visible = false;
-  lowerLip.visible = false;
-  cavity.visible = false;
-  cavityShadow.visible = false;
-
-  sourceMouth.position.set(0, 0, 0);
-  sourceMouth.rotation.set(0, 0, 0);
-  sourceMouth.scale.set(1, 1, 1);
-  sourceMouth.material = lipMaterial;
-  sourceMouth.visible = true;
-
-  shapeGroup.add(sourceMouth, cavityShadow, cavity, tongue, upperLip, lowerLip);
-  parent.add(group);
-
-  return {
-    group,
-    baseMouth: sourceMouth,
-    upperLip,
-    lowerLip,
-    cavity,
-    cavityShadow,
-    tongue,
-    lipMaterial,
-    cavityMaterial,
-    shadowMaterial,
-  };
-}
-
 export function createClippyController({ THREE, scene, initialState, avatarId }) {
   const state = { ...initialState };
   const plugins = [officePackPlugin].filter(Boolean);
@@ -180,7 +89,22 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
   });
   scene.add(clippy.group);
 
-  const mouthRig = createMouthRig(THREE, clippy.mouth);
+  // Create universal mouth rig and attach to head
+  const cavityColorBase = new THREE.Color(state.darkColor).multiplyScalar(0.4).getHex();
+  const shadowColorBase = new THREE.Color(state.darkColor).multiplyScalar(0.26).getHex();
+
+  const mouthRig = createUniversalMouth({
+    THREE,
+    anchor: clippy.head,
+    options: {
+      lipColor: LIP_COLOR,
+      cavityColor: cavityColorBase,
+      tongueColor: 0x7d3445,
+      shadowColor: shadowColorBase,
+      shadowOpacity: 0.6,
+    },
+  });
+
   if (mouthRig?.group) {
     clippy.mouth = mouthRig.group;
   }
@@ -237,13 +161,8 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
 
   const voiceRuntime = {
     target: 0,
-    current: 0,
-    expression: expressionProfile(state.expression),
     visemeKey: SIL_VISEME,
     visemeStrengthTarget: 0,
-    visemeStrengthCurrent: 0,
-    poseCurrent: { ...VISEME_POSES[SIL_VISEME] },
-    phase: Math.random() * Math.PI * 2,
   };
 
   function applyMaterialState() {
@@ -271,11 +190,11 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     setMaterialColor(rightPupilMaterial, state.darkColor);
     setMaterialColor(rightEyeMaterial, state.eyeColor);
 
-    if (mouthRig) {
-      setMaterialColor(mouthRig.lipMaterial, LIP_COLOR);
+    if (mouthRig?.materials) {
+      setMaterialColor(mouthRig.materials.lipMaterial, LIP_COLOR);
       const cavityColor = new THREE.Color(state.darkColor).multiplyScalar(0.4);
-      setMaterialColor(mouthRig.cavityMaterial, cavityColor);
-      setMaterialColor(mouthRig.shadowMaterial, new THREE.Color(state.darkColor).multiplyScalar(0.26));
+      setMaterialColor(mouthRig.materials.cavityMaterial, cavityColor);
+      setMaterialColor(mouthRig.materials.shadowMaterial, new THREE.Color(state.darkColor).multiplyScalar(0.26));
     }
   }
 
@@ -369,110 +288,61 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     clippy.rightArm.pivot.position.x = state.armSpread;
     clippy.leftArm.pivot.position.y = state.armY;
     clippy.rightArm.pivot.position.y = state.armY;
+
+    // Apply mouth rig placement
+    applyMouthPlacement();
+  }
+
+  function loadMouthPlacement() {
+    const storageKey = `mouth-placement:${avatarId}`;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        state.mouthRigX = parsed.x ?? state.mouthRigX;
+        state.mouthRigY = parsed.y ?? state.mouthRigY;
+        state.mouthRigZ = parsed.z ?? state.mouthRigZ;
+        state.mouthRigScale = parsed.scale ?? state.mouthRigScale;
+        state.mouthRigRotX = parsed.rotX ?? state.mouthRigRotX;
+        state.mouthRigRotY = parsed.rotY ?? state.mouthRigRotY;
+        state.mouthRigRotZ = parsed.rotZ ?? state.mouthRigRotZ;
+      }
+    } catch { /* ignore */ }
+  }
+
+  function saveMouthPlacement() {
+    const storageKey = `mouth-placement:${avatarId}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({
+        x: state.mouthRigX,
+        y: state.mouthRigY,
+        z: state.mouthRigZ,
+        scale: state.mouthRigScale,
+        rotX: state.mouthRigRotX,
+        rotY: state.mouthRigRotY,
+        rotZ: state.mouthRigRotZ,
+      }));
+    } catch { /* ignore */ }
+  }
+
+  function applyMouthPlacement() {
+    if (!clippy.mouth) return;
+    clippy.mouth.position.x = state.mouthRigX;
+    clippy.mouth.position.y = state.mouthRigY;
+    clippy.mouth.position.z = state.mouthRigZ;
+    clippy.mouth.scale.setScalar(state.mouthRigScale);
+    clippy.mouth.rotation.set(state.mouthRigRotX, state.mouthRigRotY, state.mouthRigRotZ);
   }
 
   function applyVoiceFrame(dt) {
-    if (!clippy.mouth) return;
-
-    const levelSmoothing = voiceRuntime.target > voiceRuntime.current ? 0.36 : 0.22;
-    voiceRuntime.current += (voiceRuntime.target - voiceRuntime.current) * levelSmoothing;
-    if (voiceRuntime.current < 0.004) voiceRuntime.current = 0;
-
-    const visemeSmoothing = voiceRuntime.visemeStrengthTarget > voiceRuntime.visemeStrengthCurrent ? 0.4 : 0.24;
-    voiceRuntime.visemeStrengthCurrent += (voiceRuntime.visemeStrengthTarget - voiceRuntime.visemeStrengthCurrent) * visemeSmoothing;
-    if (voiceRuntime.visemeStrengthCurrent < 0.004) voiceRuntime.visemeStrengthCurrent = 0;
-
-    const targetPose = VISEME_POSES[voiceRuntime.visemeKey] || VISEME_POSES[SIL_VISEME];
-    const mixedPose = blendPose(VISEME_POSES[SIL_VISEME], targetPose, voiceRuntime.visemeStrengthCurrent);
-
-    for (const key of ["open", "width", "round", "press", "jaw"]) {
-      const from = voiceRuntime.poseCurrent[key];
-      const to = mixedPose[key];
-      voiceRuntime.poseCurrent[key] = from + (to - from) * 0.34;
-    }
-
-    const expr = voiceRuntime.expression;
-    const activity = clamp(voiceRuntime.current * 0.8 + voiceRuntime.visemeStrengthCurrent * 0.64, 0, 1);
-
-    voiceRuntime.phase += dt * (14 + activity * 20);
-    const flutter = Math.sin(voiceRuntime.phase) * 0.04 * activity;
-
-    const openAmount = clamp(voiceRuntime.poseCurrent.open * (0.14 + activity * 0.66) + flutter, 0, 1.1);
-    const widthAmount = clamp(voiceRuntime.poseCurrent.width + activity * 0.05, 0.74, 1.45);
-    const roundAmount = clamp(voiceRuntime.poseCurrent.round, -0.22, 0.92);
-    const pressAmount = clamp(voiceRuntime.poseCurrent.press, 0, 1);
-    const jawAmount = clamp(voiceRuntime.poseCurrent.jaw, 0, 1);
-    const sealAmount = clamp(pressAmount * (1 - activity * 0.28), 0, 1);
-    const aperture = clamp(openAmount * (1 - sealAmount * 0.58), 0, 1.2);
-    const isBilabial = voiceRuntime.visemeKey === "mbp";
-    const bilabialLock = isBilabial ? voiceRuntime.visemeStrengthCurrent : 0;
-    const bridgeBoost =
-      clamp((0.24 - aperture) / 0.24, 0, 1)
-      * clamp(activity * 0.12 + voiceRuntime.current * 0.09, 0, 0.14);
-    const bridgeOpen = clamp((aperture + bridgeBoost) * (1 - bilabialLock * 0.95), 0, 1.16);
-    const mouthOffsetY = Number.isFinite(state.mouthOffsetY) ? state.mouthOffsetY : 0;
-    const mouthOffsetZ = mouthOffsetY * MOUTH_OFFSET_Z_FACTOR;
-
-    const mouthScaleY = expr.mouthScaleY * state.mouthHeight * (0.96 + bridgeOpen * 0.5 + (1 - sealAmount) * 0.03);
-    const mouthScaleAnchorY = (1 - mouthScaleY) * MOUTH_SCALE_ANCHOR_Y;
-    clippy.mouth.scale.x = state.mouthWidth * widthAmount;
-    clippy.mouth.scale.y = mouthScaleY;
-    clippy.mouth.position.y = expr.mouthShiftY + mouthOffsetY + mouthScaleAnchorY - activity * 0.015 - jawAmount * 0.016;
-    clippy.mouth.position.z = base.mouthZ + mouthOffsetZ;
-
     if (!mouthRig) return;
 
-    let useRig =
-      aperture > 0.11
-      || voiceRuntime.current > 0.22
-      || voiceRuntime.visemeStrengthCurrent > 0.1;
-    if (bilabialLock > 0.36) {
-      useRig = false;
-    }
-    mouthRig.baseMouth.visible = !useRig;
-    mouthRig.upperLip.visible = useRig;
-    mouthRig.lowerLip.visible = useRig;
-    if (!useRig) {
-      mouthRig.cavity.visible = false;
-      mouthRig.cavityShadow.visible = false;
-      mouthRig.tongue.visible = false;
-      return;
-    }
-
-    const lipSpread = clamp(1 + (widthAmount - 1) * 0.36 - roundAmount * 0.1, 0.78, 1.48);
-    const closedBlend = clamp((bridgeOpen - 0.03) / 0.14, 0, 1);
-    const upperLift = 0.004 + bridgeOpen * 0.016 - sealAmount * 0.012;
-    const lowerDrop = -0.004 - bridgeOpen * 0.098 - jawAmount * 0.03 + sealAmount * 0.01;
-
-    mouthRig.upperLip.position.y = upperLift;
-    mouthRig.lowerLip.position.y = lowerDrop * closedBlend;
-    mouthRig.lowerLip.visible = true;
-
-    mouthRig.upperLip.scale.x = lipSpread;
-    mouthRig.lowerLip.scale.x = clamp(lipSpread * (1 + roundAmount * 0.06), 0.76, 1.56);
-
-    mouthRig.upperLip.scale.y = clamp(1 - sealAmount * 0.28 + roundAmount * 0.08, 0.74, 1.24);
-    mouthRig.lowerLip.scale.y = clamp(0.7 + closedBlend * (0.3 - sealAmount * 0.32 + roundAmount * 0.1), 0.7, 1.28);
-
-    const cavityOpen = clamp(
-      (bridgeOpen * (0.92 - sealAmount * 0.38) + activity * 0.05) * (1 - bilabialLock * 1.2),
-      0,
-      1.12,
-    );
-    mouthRig.cavity.visible = cavityOpen > 0.03;
-    mouthRig.cavity.scale.x = clamp(1.08 + (lipSpread - 1) * 0.36 + bridgeOpen * 0.06 - roundAmount * 0.04, 0.96, 1.28);
-    mouthRig.cavity.scale.y = clamp(0.54 + cavityOpen * 0.72 + roundAmount * 0.08, 0.48, 1.28);
-    mouthRig.cavity.position.y = -0.002 - cavityOpen * 0.055;
-
-    mouthRig.cavityShadow.visible = mouthRig.cavity.visible;
-    mouthRig.cavityShadow.scale.x = clamp(mouthRig.cavity.scale.x * 1.04, 0.96, 1.34);
-    mouthRig.cavityShadow.scale.y = clamp(mouthRig.cavity.scale.y * 1.08, 0.5, 1.42);
-    mouthRig.cavityShadow.position.y = mouthRig.cavity.position.y - 0.003;
-
-    mouthRig.tongue.visible = cavityOpen > 0.3 && bilabialLock < 0.28;
-    mouthRig.tongue.scale.x = clamp(0.52 + lipSpread * 0.2, 0.42, 0.98);
-    mouthRig.tongue.scale.y = clamp(0.16 + cavityOpen * 0.42, 0.14, 0.72);
-    mouthRig.tongue.position.y = -0.052 - cavityOpen * 0.05;
+    // Delegate voice animation to the universal mouth rig
+    mouthRig.applyVoiceFrame(dt, {
+      viseme: voiceRuntime.visemeKey,
+      visemeStrength: voiceRuntime.visemeStrengthTarget,
+      voiceActivity: voiceRuntime.target,
+    });
   }
 
   function applyPropPlacement() {
@@ -572,6 +442,7 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
         rotX: state.propRotX, rotY: state.propRotY, rotZ: state.propRotZ,
       });
     }
+    saveMouthPlacement();
   }
 
   function update(dt, pointer) {
@@ -613,6 +484,9 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
       clippy.dispose();
     }
   }
+
+  // Load saved mouth placement from localStorage
+  loadMouthPlacement();
 
   setState(state, { force: true });
 
