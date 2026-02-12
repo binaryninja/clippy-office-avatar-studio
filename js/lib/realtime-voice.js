@@ -42,6 +42,7 @@ export function createRealtimeVoice({
   onStatus = () => {},
   onAssistantSpeechLevel = () => {},
   onAssistantViseme = () => {},
+  onConnectionStateChange = () => {},
   getSessionInstructions = () => "",
   getGreetingInstructions = () =>
     "In one short friendly sentence, introduce yourself and say you're ready to chat by voice.",
@@ -71,10 +72,17 @@ export function createRealtimeVoice({
     lastTranscriptChunk: "",
     lastVisemeSentKey: VISEME_SIL,
     lastVisemeSentStrength: 0,
+    connectedNotified: false,
   };
 
   function isConnected() {
     return Boolean(state.pc);
+  }
+
+  function notifyConnectionState(connected) {
+    if (state.connectedNotified === connected) return;
+    state.connectedNotified = connected;
+    onConnectionStateChange({ connected });
   }
 
   function updateButton() {
@@ -654,13 +662,19 @@ export function createRealtimeVoice({
   async function connect() {
     if (state.connecting || isConnected()) return;
 
+    const isLocalhost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    if (!window.isSecureContext && !isLocalhost) {
+      onStatus("Voice requires HTTPS or localhost for microphone access.", 5200);
+      return;
+    }
+
     if (!window.RTCPeerConnection) {
       onStatus("Voice is not supported in this browser.", 3200);
       return;
     }
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      onStatus("Microphone access is not available in this browser.", 3600);
+      onStatus("Microphone API unavailable. Use HTTPS or localhost.", 5200);
       return;
     }
 
@@ -671,6 +685,7 @@ export function createRealtimeVoice({
       const clientSecret = await getClientSecret();
       if (!clientSecret) throw new Error("No realtime client secret returned.");
       await openRealtimeSession(clientSecret);
+      notifyConnectionState(true);
       onStatus("Voice connected. Start talking.", 2400);
     } catch (error) {
       disconnect({ silent: true });
@@ -729,6 +744,7 @@ export function createRealtimeVoice({
     stopActivityLoop();
 
     state.connecting = false;
+    notifyConnectionState(false);
     updateButton();
     if (!silent) {
       onStatus("Voice disconnected.", 1800);
