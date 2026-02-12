@@ -2,7 +2,6 @@ import { clamp } from "./utils.js";
 
 const BODY_WIDTH = 2.3;
 const BODY_DEPTH = 0.34;
-const FOLD_DEPTH = 0.08;
 const BODY_TOP_Y = 2.42;
 const BODY_BOTTOM_Y = -2.42;
 const BODY_HEIGHT = BODY_TOP_Y - BODY_BOTTOM_Y;
@@ -315,26 +314,6 @@ function createBodyGeometry(THREE) {
   return geometry;
 }
 
-function createFoldGeometry(THREE) {
-  const shape = new THREE.Shape();
-  shape.moveTo(-1.25, 2.27);
-  shape.quadraticCurveTo(0, 2.56, 1.25, 2.27);
-  shape.lineTo(1.18, 1.86);
-  shape.quadraticCurveTo(0, 2.1, -1.18, 1.86);
-  shape.closePath();
-
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: FOLD_DEPTH,
-    bevelEnabled: false,
-    curveSegments: 32,
-    steps: 1,
-  });
-
-  geometry.translate(0, 0, BODY_DEPTH * 0.33);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
 function configureShadow(mesh, { cast = true, receive = true } = {}) {
   mesh.castShadow = cast;
   mesh.receiveShadow = receive;
@@ -518,18 +497,6 @@ export function createTowelyAvatar(THREE, currentState = {}) {
 
   const materials = {
     cloth: createTerryMaterial(THREE, currentState),
-    fold: new THREE.MeshPhysicalMaterial({
-      color: currentState.foldColor || "#7e83b3",
-      metalness: clamp((currentState.metalness ?? 0.03) * 0.2, 0, 1),
-      roughness: clamp((currentState.roughness ?? 0.84) * 0.94, 0, 1),
-      roughnessMap: fabricMaps.roughnessMap,
-      clearcoat: clamp((currentState.clearcoat ?? 0.07) * 0.7, 0, 1),
-      clearcoatRoughness: clamp((currentState.clearcoatRoughness ?? 0.8) * 0.96, 0, 1),
-      normalMap: fabricMaps.normalMap,
-      normalScale: new THREE.Vector2(0.16, 0.2),
-      emissive: new THREE.Color(currentState.glowColor || "#2f3048"),
-      emissiveIntensity: clamp((currentState.glowIntensity ?? 0.08) * 0.1, 0, 1),
-    }),
     stripe: new THREE.MeshStandardMaterial({
       color: currentState.stripeColor || "#d9dcf2",
       metalness: 0.01,
@@ -585,10 +552,6 @@ export function createTowelyAvatar(THREE, currentState = {}) {
   const bodyMesh = new THREE.Mesh(createBodyGeometry(THREE), materials.cloth);
   configureShadow(bodyMesh);
   bodyShell.add(bodyMesh);
-
-  const foldMesh = new THREE.Mesh(createFoldGeometry(THREE), materials.fold);
-  configureShadow(foldMesh);
-  bodyShell.add(foldMesh);
 
   const stripes = [];
 
@@ -661,7 +624,6 @@ export function createTowelyAvatar(THREE, currentState = {}) {
     bodyShell,
     bodyMesh,
     faceRoot,
-    foldMesh,
     stripes,
     leftEyeRoot,
     rightEyeRoot,

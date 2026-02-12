@@ -173,7 +173,6 @@ const towelyFields = [
       { key: "bodyWidth", label: "Width", type: "range", min: 0.72, max: 1.45, step: 0.01 },
       { key: "bodyHeight", label: "Height", type: "range", min: 0.72, max: 1.45, step: 0.01 },
       { key: "bodyDepth", label: "Depth", type: "range", min: 0.72, max: 1.45, step: 0.01 },
-      { key: "foldHeight", label: "Fold Offset", type: "range", min: -0.25, max: 0.35, step: 0.01 },
       { key: "stripeOffset", label: "Stripe Offset", type: "range", min: -0.45, max: 0.45, step: 0.01 },
       { key: "fuzziness", label: "Fuzz", type: "range", min: 0, max: 100, step: 1 },
       { key: "loopScale", label: "Loop Size", type: "range", min: 10, max: 100, step: 1 },
@@ -196,7 +195,6 @@ const towelyFields = [
     title: "Materials",
     fields: [
       { key: "bodyColor", label: "Body", type: "color" },
-      { key: "foldColor", label: "Fold", type: "color" },
       { key: "stripeColor", label: "Stripes", type: "color" },
       { key: "skinColor", label: "Skin", type: "color" },
       { key: "hairColor", label: "Hair", type: "color" },
@@ -355,7 +353,6 @@ export const AVATAR_DEFINITIONS = {
       bodyWidth: 1,
       bodyHeight: 1,
       bodyDepth: 1,
-      foldHeight: 0,
       stripeOffset: 0.28,
       fuzziness: 19,
       loopScale: 92,
@@ -374,7 +371,6 @@ export const AVATAR_DEFINITIONS = {
       legSpread: 0.21,
 
       bodyColor: "#8b8fbe",
-      foldColor: "#7e83b3",
       stripeColor: "#eaeaf5",
       skinColor: "#e8d2b0",
       hairColor: "#8f90be",
