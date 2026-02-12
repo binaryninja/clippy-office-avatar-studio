@@ -4,12 +4,12 @@ import {
   AVATAR_DEFINITIONS,
   AVATAR_ORDER,
   NO_PROP_VALUE,
-  PIN_STAGE_TOP_Y,
-  TOWELY_STAGE_TOP_Y,
 } from "./config/avatars.js";
-import { createClippyController } from "./avatars/clippy-controller.js";
-import { createThumbtackController } from "./avatars/thumbtack-controller.js";
-import { createTowelyController } from "./avatars/towely-controller.js";
+import { getEngine } from "./engines.js";
+// Side-effect imports: each controller self-registers its engine on load.
+import "./avatars/clippy-controller.js";
+import "./avatars/thumbtack-controller.js";
+import "./avatars/towely-controller.js";
 import { clamp, randomBetween, randomColor } from "./lib/utils.js";
 import { createRealtimeVoice } from "./lib/realtime-voice.js";
 import { createElevenLabsVoice } from "./lib/elevenlabs-voice.js";
@@ -660,39 +660,13 @@ function applyScenePreset() {
 }
 
 function createController(definition, initialState) {
-  if (definition.engine === "clippy") {
-    return createClippyController({
-      THREE,
-      scene,
-      initialState,
-    });
-  }
-
-  if (definition.engine === "thumbtack") {
-    return createThumbtackController({
-      THREE,
-      scene,
-      initialState,
-      profile: definition.profile,
-      stageTopY: PIN_STAGE_TOP_Y,
-    });
-  }
-
-  if (definition.engine === "towely") {
-    return createTowelyController({
-      THREE,
-      scene,
-      initialState,
-      stageTopY: TOWELY_STAGE_TOP_Y,
-    });
-  }
-
-  return createThumbtackController({
+  const factory = getEngine(definition.engine);
+  return factory({
     THREE,
     scene,
     initialState,
     profile: definition.profile,
-    stageTopY: PIN_STAGE_TOP_Y,
+    stageTopY: definition.stageTopY,
   });
 }
 

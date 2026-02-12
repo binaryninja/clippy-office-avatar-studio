@@ -216,6 +216,7 @@ export const AVATAR_DEFINITIONS = {
     label: "Clippy",
     description: "Classic assistant paperclip with office props and expression controls.",
     engine: "clippy",
+    order: 0,
     scenePreset: "clippy",
     controls: clippyFields,
     defaultState: {
@@ -261,6 +262,8 @@ export const AVATAR_DEFINITIONS = {
     description: "Push pin avatar with layered cap profile and animated expressions.",
     engine: "thumbtack",
     profile: "pushy",
+    order: 1,
+    stageTopY: -2.67,
     scenePreset: "pin",
     controls: pinFields,
     defaultState: {
@@ -302,6 +305,8 @@ export const AVATAR_DEFINITIONS = {
     description: "Thumb tack mascot with rounded cap profile and playful animation.",
     engine: "thumbtack",
     profile: "tacky",
+    order: 2,
+    stageTopY: -2.67,
     scenePreset: "pin",
     controls: pinFields,
     defaultState: {
@@ -342,6 +347,8 @@ export const AVATAR_DEFINITIONS = {
     label: "Towely",
     description: "Sentient towel mascot with expressive face and bendable limbs.",
     engine: "towely",
+    order: 3,
+    stageTopY: -2.67,
     scenePreset: "towel",
     controls: towelyFields,
     defaultState: {
@@ -386,7 +393,8 @@ export const AVATAR_DEFINITIONS = {
   },
 };
 
-export const AVATAR_ORDER = ["clippy", "pushy", "tacky", "towely"];
+export const AVATAR_ORDER = Object.keys(AVATAR_DEFINITIONS)
+  .sort((a, b) => (AVATAR_DEFINITIONS[a].order ?? 0) - (AVATAR_DEFINITIONS[b].order ?? 0));
 
 export const SCENE_PRESETS = {
   clippy: {
@@ -412,5 +420,3 @@ export const SCENE_PRESETS = {
   },
 };
 
-export const PIN_STAGE_TOP_Y = -2.67;
-export const TOWELY_STAGE_TOP_Y = -2.67;
