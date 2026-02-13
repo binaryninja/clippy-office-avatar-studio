@@ -240,11 +240,19 @@
 
         // ---- OVERBITE & MOUTH ----
         const obGeo = new THREE.SphereGeometry(0.17, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-        obGeo.scale(1.30, 0.50, 0.65);
+        obGeo.scale(1.05, 0.50, 0.65);
         const overbite = new THREE.Mesh(obGeo, skin);
-        overbite.position.set(0, HEAD_Y - 0.22, FACE_Z + 0.06);
+        overbite.position.set(0, HEAD_Y - 0.22, FACE_Z + 0.08);
         overbite.rotation.x = -Math.PI / 6;
         bart.add(overbite);
+
+        // Mouth interior — dark cavity behind lips to prevent sealed-lip look
+        const mouthBagGeo = new THREE.SphereGeometry(0.14, 16, 10);
+        const darkMouth = new THREE.MeshStandardMaterial({ color: 0x1a0500 });
+        const mouthBag = new THREE.Mesh(mouthBagGeo, darkMouth);
+        mouthBag.scale.set(1.25, 0.30, 0.45);
+        mouthBag.position.set(0, HEAD_Y - 0.265, FACE_Z + 0.04);
+        bart.add(mouthBag);
 
         // Mouth line with Bart's signature smirk (right side higher)
         const mouthCurve = new THREE.QuadraticBezierCurve3(
@@ -322,33 +330,59 @@
           return hand;
         }
 
-        for (const s of [-1, 1]) {
-          const sx = s * 0.32, sy = 1.56;
-          const ex = sx + s * sinA * SLEEVE_LEN;
-          const ey = sy - cosA * SLEEVE_LEN;
-          const wx = ex + s * sinA * ARM_LEN;
-          const wy = ey - cosA * ARM_LEN;
+        // Left arm (hierarchical rig for animation)
+        const leftArmPivot = new THREE.Group();
+        leftArmPivot.position.set(-0.32, 1.56, 0);
+        leftArmPivot.rotation.z = -ANG;
+        bart.add(leftArmPivot);
 
-          const shoulderBall = new THREE.Mesh(
-            new THREE.SphereGeometry(0.085, 12, 12), shirtOrange
-          );
-          shoulderBall.position.set(sx, sy, 0);
-          bart.add(shoulderBall);
+        const lShoulderBall = new THREE.Mesh(
+          new THREE.SphereGeometry(0.085, 12, 12), shirtOrange
+        );
+        leftArmPivot.add(lShoulderBall);
 
-          const sleeve = new THREE.Mesh(sleeveGeo.clone(), shirtOrange);
-          sleeve.position.set((sx + ex) / 2, (sy + ey) / 2, 0);
-          sleeve.rotation.z = s * ANG;
-          bart.add(sleeve);
+        const lSleeve = new THREE.Mesh(sleeveGeo.clone(), shirtOrange);
+        lSleeve.position.set(0, -SLEEVE_LEN / 2, 0);
+        leftArmPivot.add(lSleeve);
 
-          const arm = new THREE.Mesh(armGeo.clone(), skin);
-          arm.position.set((ex + wx) / 2, (ey + wy) / 2, 0);
-          arm.rotation.z = s * ANG;
-          bart.add(arm);
+        const leftElbowPivot = new THREE.Group();
+        leftElbowPivot.position.set(0, -SLEEVE_LEN, 0);
+        leftArmPivot.add(leftElbowPivot);
 
-          const hand = makeHand(s);
-          hand.position.set(wx, wy, 0);
-          bart.add(hand);
-        }
+        const lForearm = new THREE.Mesh(armGeo.clone(), skin);
+        lForearm.position.set(0, -ARM_LEN / 2, 0);
+        leftElbowPivot.add(lForearm);
+
+        const lHand = makeHand(-1);
+        lHand.position.set(0, -ARM_LEN, 0);
+        leftElbowPivot.add(lHand);
+
+        // Right arm (hierarchical rig for wave animation)
+        const rightArmPivot = new THREE.Group();
+        rightArmPivot.position.set(0.32, 1.56, 0);
+        rightArmPivot.rotation.z = ANG;
+        bart.add(rightArmPivot);
+
+        const rShoulderBall = new THREE.Mesh(
+          new THREE.SphereGeometry(0.085, 12, 12), shirtOrange
+        );
+        rightArmPivot.add(rShoulderBall);
+
+        const rSleeve = new THREE.Mesh(sleeveGeo.clone(), shirtOrange);
+        rSleeve.position.set(0, -SLEEVE_LEN / 2, 0);
+        rightArmPivot.add(rSleeve);
+
+        const elbowPivot = new THREE.Group();
+        elbowPivot.position.set(0, -SLEEVE_LEN, 0);
+        rightArmPivot.add(elbowPivot);
+
+        const rForearm = new THREE.Mesh(armGeo.clone(), skin);
+        rForearm.position.set(0, -ARM_LEN / 2, 0);
+        elbowPivot.add(rForearm);
+
+        const rHand = makeHand(1);
+        rHand.position.set(0, -ARM_LEN, 0);
+        elbowPivot.add(rHand);
 
         // ---- SHORTS ----
         const shorts = new THREE.Mesh(
@@ -357,23 +391,59 @@
         shorts.position.y = 0.98;
         bart.add(shorts);
 
-        // ---- LEGS ----
-        const legGeo = new THREE.CylinderGeometry(0.075, 0.075, 0.45, 12);
-        for (const s of [-1, 1]) {
-          const leg = new THREE.Mesh(legGeo, skin);
-          leg.position.set(s * 0.12, 0.63, 0);
-          bart.add(leg);
-        }
-
-        // ---- SHOES ----
+        // ---- LEGS (hierarchical rig for walk animation) ----
+        const THIGH_LEN = 0.225, SHIN_LEN = 0.225;
+        const thighGeo = new THREE.CylinderGeometry(0.075, 0.075, THIGH_LEN, 12);
+        const shinGeo = new THREE.CylinderGeometry(0.075, 0.075, SHIN_LEN, 12);
         const shoeGeo = new THREE.BoxGeometry(0.17, 0.10, 0.34);
-        for (const s of [-1, 1]) {
-          const shoe = new THREE.Mesh(shoeGeo, shoesBlue);
-          shoe.position.set(s * 0.12, 0.38, 0.06);
-          bart.add(shoe);
-        }
 
-        return bart;
+        // Left leg
+        const leftHipPivot = new THREE.Group();
+        leftHipPivot.position.set(-0.12, 0.855, 0);
+        bart.add(leftHipPivot);
+
+        const lThigh = new THREE.Mesh(thighGeo, skin);
+        lThigh.position.set(0, -THIGH_LEN / 2, 0);
+        leftHipPivot.add(lThigh);
+
+        const leftKneePivot = new THREE.Group();
+        leftKneePivot.position.set(0, -THIGH_LEN, 0);
+        leftHipPivot.add(leftKneePivot);
+
+        const lShin = new THREE.Mesh(shinGeo, skin);
+        lShin.position.set(0, -SHIN_LEN / 2, 0);
+        leftKneePivot.add(lShin);
+
+        const lShoe = new THREE.Mesh(shoeGeo, shoesBlue);
+        lShoe.position.set(0, -SHIN_LEN - 0.05, 0.06);
+        leftKneePivot.add(lShoe);
+
+        // Right leg
+        const rightHipPivot = new THREE.Group();
+        rightHipPivot.position.set(0.12, 0.855, 0);
+        bart.add(rightHipPivot);
+
+        const rThigh = new THREE.Mesh(thighGeo, skin);
+        rThigh.position.set(0, -THIGH_LEN / 2, 0);
+        rightHipPivot.add(rThigh);
+
+        const rightKneePivot = new THREE.Group();
+        rightKneePivot.position.set(0, -THIGH_LEN, 0);
+        rightHipPivot.add(rightKneePivot);
+
+        const rShin = new THREE.Mesh(shinGeo, skin);
+        rShin.position.set(0, -SHIN_LEN / 2, 0);
+        rightKneePivot.add(rShin);
+
+        const rShoe = new THREE.Mesh(shoeGeo, shoesBlue);
+        rShoe.position.set(0, -SHIN_LEN - 0.05, 0.06);
+        rightKneePivot.add(rShoe);
+
+        return {
+          group: bart,
+          leftArmPivot, leftElbowPivot, rightArmPivot, elbowPivot,
+          leftHipPivot, leftKneePivot, rightHipPivot, rightKneePivot,
+        };
       }
 
       // ========================================================
@@ -404,7 +474,11 @@
       gridHelper.position.y = 0.331;
       scene.add(gridHelper);
 
-      const bart = buildBart();
+      const {
+        group: bart,
+        leftArmPivot, leftElbowPivot, rightArmPivot, elbowPivot,
+        leftHipPivot, leftKneePivot, rightHipPivot, rightKneePivot,
+      } = buildBart();
       scene.add(bart);
 
       // ========================================================
@@ -457,7 +531,54 @@
           renderer.render(scene, camera);
         }
       }
-      renderAll();
+      // Walk cycle animation
+      const clock = new THREE.Clock();
+      const REST_Y = bart.position.y;
+      const WALK_SPEED = 4;
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+        const phase = t * WALK_SPEED;
+
+        // Base sine waves — left and right in opposition
+        const lSin = Math.sin(phase);
+        const rSin = Math.sin(phase + Math.PI);
+
+        // ---- LEGS ----
+        const legSwing = 0.4;
+        leftHipPivot.rotation.x = lSin * legSwing;
+        rightHipPivot.rotation.x = rSin * legSwing;
+        // Knee bends only on forward swing (negative phase = forward)
+        leftKneePivot.rotation.x = Math.max(0, -lSin) * 0.7;
+        rightKneePivot.rotation.x = Math.max(0, -rSin) * 0.7;
+
+        // ---- ARMS (counter-swing opposite to legs) ----
+        // Left arm swings forward when RIGHT leg is forward, and vice versa
+        const armSwing = 0.35;
+        leftArmPivot.rotation.z = -0.15;  // slight outward rest angle
+        leftArmPivot.rotation.x = rSin * armSwing;
+        leftElbowPivot.rotation.x = Math.max(0, rSin) * 0.3;
+
+        rightArmPivot.rotation.z = 0.15;
+        rightArmPivot.rotation.x = lSin * armSwing;
+        elbowPivot.rotation.x = Math.max(0, lSin) * 0.3;
+
+        // ---- BODY BOB ----
+        // Peaks twice per stride (at each mid-swing), uses 2x frequency
+        bart.position.y = REST_Y + Math.abs(Math.sin(phase)) * 0.03;
+
+        // ---- TORSO SIDE SWAY ----
+        // Lean toward the planted foot
+        bart.rotation.z = Math.sin(phase) * 0.03;
+
+        // ---- HIP TWIST ----
+        // Pelvis rotates with stride — left hip forward when left leg forward
+        bart.rotation.y = Math.sin(phase) * 0.06;
+
+        renderAll();
+      }
+      animate();
 
       // ========================================================
       // Download screenshots
