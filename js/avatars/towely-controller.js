@@ -2,11 +2,13 @@ import { createTowelyAvatar } from "../lib/towely-factory.js";
 import { clamp } from "../lib/utils.js";
 import { registerEngine } from "../engines.js";
 import { createPropManager, listSharedProps, getSharedProp, loadPropPlacement, savePropPlacement, applyPlacementToObject } from "../lib/prop-system.js";
+import { createUniversalMouth } from "../lib/mouth-rig.js";
 import "../lib/shared-props.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
 const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate"];
 const EXPRESSION_CHOICES = ["neutral", "smug", "angry", "startled"];
+const SIL_VISEME = "sil";
 
 function expressionProfile(expression) {
   if (expression === "smug") {
@@ -151,6 +153,25 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
   const avatar = createTowelyAvatar(THREE, state);
   scene.add(avatar.group);
 
+  // Create universal mouth rig and attach to face
+  const mouthRig = createUniversalMouth({
+    THREE,
+    anchor: avatar.faceRoot,
+    options: {
+      lipColor: 0xb53b4e,
+      cavityColor: new THREE.Color(state.darkColor).multiplyScalar(0.4).getHex(),
+      tongueColor: 0x7d3445,
+      shadowColor: new THREE.Color(state.darkColor).multiplyScalar(0.26).getHex(),
+      shadowOpacity: 0.6,
+    },
+  });
+
+  if (mouthRig?.group) {
+    // Hide the old simple smile mesh — the rig replaces it
+    if (avatar.smile) avatar.smile.visible = false;
+    avatar.faceRoot.add(mouthRig.group);
+  }
+
   const propManager = createPropManager();
   const sharedPropNames = listSharedProps();
   let currentPropName = NO_PROP_VALUE;
@@ -180,8 +201,8 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     blinkTimer: 0,
     blinkOffset: 0.34,
     voiceTarget: 0,
-    voiceCurrent: 0,
-    voicePhase: Math.random() * Math.PI * 2,
+    visemeKey: SIL_VISEME,
+    visemeStrength: 0,
   };
 
   function updateMaterials() {
@@ -423,21 +444,54 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     avatar.rightPupil.scale.set(runtime.pupilBaseScale, runtime.pupilBaseScale * pupilYScale, 1);
   }
 
+  function loadMouthPlacement() {
+    const storageKey = `mouth-placement:${avatarId}`;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        state.mouthRigX = parsed.x ?? state.mouthRigX;
+        state.mouthRigY = parsed.y ?? state.mouthRigY;
+        state.mouthRigZ = parsed.z ?? state.mouthRigZ;
+        state.mouthRigScale = parsed.scale ?? state.mouthRigScale;
+        state.mouthRigRotX = parsed.rotX ?? state.mouthRigRotX;
+        state.mouthRigRotY = parsed.rotY ?? state.mouthRigRotY;
+        state.mouthRigRotZ = parsed.rotZ ?? state.mouthRigRotZ;
+      }
+    } catch { /* ignore */ }
+  }
+
+  function saveMouthPlacement() {
+    const storageKey = `mouth-placement:${avatarId}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({
+        x: state.mouthRigX,
+        y: state.mouthRigY,
+        z: state.mouthRigZ,
+        scale: state.mouthRigScale,
+        rotX: state.mouthRigRotX,
+        rotY: state.mouthRigRotY,
+        rotZ: state.mouthRigRotZ,
+      }));
+    } catch { /* ignore */ }
+  }
+
+  function applyMouthPlacement() {
+    if (!mouthRig?.group) return;
+    mouthRig.group.position.set(state.mouthRigX, state.mouthRigY, state.mouthRigZ);
+    mouthRig.group.scale.setScalar(state.mouthRigScale);
+    mouthRig.group.rotation.set(state.mouthRigRotX, state.mouthRigRotY, state.mouthRigRotZ);
+  }
+
   function applyVoiceFrame(dt) {
-    const smoothing = runtime.voiceTarget > runtime.voiceCurrent ? 0.38 : 0.2;
-    runtime.voiceCurrent += (runtime.voiceTarget - runtime.voiceCurrent) * smoothing;
-    if (runtime.voiceCurrent < 0.004) runtime.voiceCurrent = 0;
+    if (!mouthRig) return;
 
-    runtime.voicePhase += dt * (24 + runtime.voiceCurrent * 32);
-
-    const flutter = Math.sin(runtime.voicePhase) * 0.06 * runtime.voiceCurrent;
-    const open = clamp(runtime.voiceCurrent * 0.72 + flutter, 0, 1.2);
-
-    const expr = expressionProfile(state.expression);
-    const mouthWidth = clamp(state.mouthWidth * expr.mouthWidth, 0.6, 1.8);
-    const mouthOpen = clamp(state.mouthOpen + expr.mouthOpen + open, 0, 1.3);
-
-    avatar.smile.scale.set(0.88 * mouthWidth, 0.86 + mouthOpen * 0.16, 1);
+    // Delegate voice animation to the universal mouth rig
+    mouthRig.applyVoiceFrame(dt, {
+      viseme: runtime.visemeKey,
+      visemeStrength: runtime.visemeStrength,
+      voiceActivity: runtime.voiceTarget,
+    });
   }
 
   function applyPropPlacement() {
@@ -505,6 +559,7 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     updateMaterials();
     syncProp(force);
     applyPropPlacement();
+    applyMouthPlacement();
     if (currentPropName !== NO_PROP_VALUE) {
       savePropPlacement(currentPropName, avatarId, {
         x: state.propX, y: state.propY, z: state.propZ,
@@ -512,6 +567,7 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
         rotX: state.propRotX, rotY: state.propRotY, rotZ: state.propRotZ,
       });
     }
+    saveMouthPlacement();
   }
 
   function update(dt, pointer) {
@@ -531,9 +587,11 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     runtime.voiceTarget = clamp(Number.isFinite(next) ? next : 0, 0, 1);
   }
 
-  function setVoiceViseme(_payload) {
-    // Towely uses voice-activity-driven mouth animation;
-    // viseme-specific shaping is not yet implemented for this engine.
+  function setVoiceViseme(payload = null) {
+    const key = String(payload?.viseme || SIL_VISEME).toLowerCase();
+    runtime.visemeKey = key;
+    const nextStrength = Number(payload?.strength);
+    runtime.visemeStrength = clamp(Number.isFinite(nextStrength) ? nextStrength : 0, 0, 1);
   }
 
   function dispose() {
@@ -541,6 +599,9 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     scene.remove(avatar.group);
     avatar.dispose();
   }
+
+  // Load saved mouth placement from localStorage
+  loadMouthPlacement();
 
   setState(state, { force: true });
 
