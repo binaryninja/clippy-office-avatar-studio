@@ -88,7 +88,7 @@ const DEMO_RISK_STEPS = [
   },
 ];
 
-const MODE_CYCLE = ["wave", "think", "point", "idle", "celebrate"];
+const MODE_CYCLE = ["wave", "thinking", "point", "idle", "celebrate"];
 const EXPRESSION_CYCLE = ["happy", "focused", "neutral", "surprised"];
 
 const canvas = document.getElementById("presenterCanvas");

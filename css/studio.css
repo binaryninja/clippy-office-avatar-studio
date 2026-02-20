@@ -515,6 +515,202 @@ textarea:focus-visible {
   }
 }
 
+/* WS Bridge Preview panel */
+.ws-preview {
+  background:
+    linear-gradient(170deg, rgba(18, 12, 38, 0.88), rgba(8, 16, 34, 0.88)),
+    var(--surface);
+}
+
+.ws-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ws-preview-title {
+  margin: 0;
+}
+
+.ws-preview-toggle {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ws-preview-body {
+  display: grid;
+  gap: 8px;
+}
+
+/* Connection controls */
+.ws-preview-conn {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+}
+
+.ws-preview-url {
+  font-family: "Share Tech Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  padding: 0 8px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background: rgba(4, 18, 35, 0.9);
+  color: var(--ink);
+  min-width: 0;
+}
+
+.ws-preview-conn-btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.ws-preview-conn-btn.ws-connected {
+  border-color: rgba(0, 231, 255, 0.5);
+  box-shadow: 0 0 12px rgba(0, 231, 255, 0.22);
+}
+
+.ws-preview-status {
+  font-family: "Share Tech Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(0, 231, 255, 0.06);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 5px 8px;
+  text-shadow: 0 0 8px rgba(0, 231, 255, 0.4);
+}
+
+.ws-preview-status.ws-status-live {
+  border-color: rgba(0, 231, 255, 0.35);
+  box-shadow: 0 0 8px rgba(0, 231, 255, 0.12);
+}
+
+/* Event log */
+.ws-preview-log {
+  max-height: 120px;
+  overflow-y: auto;
+  font-family: "Share Tech Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  background: rgba(2, 8, 18, 0.7);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.ws-preview-log:empty {
+  display: none;
+}
+
+.ws-preview-log::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ws-preview-log::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(0, 231, 255, 0.3);
+}
+
+.ws-log-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-log-sys {
+  color: var(--muted);
+}
+
+.ws-log-event {
+  color: var(--accent);
+}
+
+.ws-log-manual {
+  color: var(--accent-3);
+}
+
+.ws-log-err {
+  color: var(--accent-2);
+}
+
+/* Section label */
+.ws-preview-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-top: 4px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.ws-preview-group {
+  display: grid;
+  gap: 4px;
+}
+
+.ws-preview-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ws-preview-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ws-preview-btn {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.ws-preview-demo-btn {
+  width: 100%;
+  height: 32px;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, rgba(247, 238, 109, 0.2), rgba(0, 231, 255, 0.2)),
+    rgba(5, 17, 32, 0.94);
+  border-color: rgba(247, 238, 109, 0.3);
+}
+
+.ws-preview-demo-btn:hover {
+  border-color: rgba(247, 238, 109, 0.5);
+  box-shadow: 0 0 15px rgba(247, 238, 109, 0.2);
+}
+
 @media (max-width: 1080px) {
   body {
     overflow-y: auto;

@@ -16,6 +16,7 @@ const MODE_DEFAULT_EXPRESSIONS = {
   celebrate: "happy",
   spin: "surprised",
   point: "focused",
+  thinking: "focused",
 };
 
 const GLOBAL_ANIMATIONS = Object.create(null);
@@ -249,6 +250,40 @@ const BUILTIN_ANIMATIONS = Object.freeze({
       clippy.rightArm.lower.rotation.z = -0.12;
       clippy.leftArm.pivot.rotation.z = 0.62;
       clippy.leftArm.upper.rotation.z = -0.45;
+    },
+  },
+  thinking: {
+    defaultExpression: MODE_DEFAULT_EXPRESSIONS.thinking,
+    apply({ clippy, modeTime }) {
+      const settle = 1 - Math.exp(-modeTime * 3.5);
+      const breathe = Math.sin(modeTime * 2.1);
+      const sway = Math.sin(modeTime * 0.9 + 0.4);
+      const pulse = Math.sin(modeTime * 2.6);
+
+      // Right hand near chin and left arm folded for a "pondering" silhouette.
+      clippy.rightArm.pivot.rotation.set(
+        -0.64 + pulse * 0.03,
+        -0.52 + Math.sin(modeTime * 1.1) * 0.05,
+        -0.24 + pulse * 0.05,
+      );
+      clippy.rightArm.upper.rotation.z = 0.46 + Math.sin(modeTime * 2.6 + 0.45) * 0.08;
+      clippy.rightArm.lower.rotation.z = -0.92 + Math.sin(modeTime * 2.6 + 1.15) * 0.08;
+
+      clippy.leftArm.pivot.rotation.set(
+        0.08 + Math.sin(modeTime * 0.95) * 0.03,
+        0.2 + Math.sin(modeTime * 1.25 + 0.8) * 0.04,
+        0.86 + Math.sin(modeTime * 1.5 + 0.9) * 0.04,
+      );
+      clippy.leftArm.upper.rotation.z = -0.72 + Math.sin(modeTime * 2.1 + 0.1) * 0.05;
+      clippy.leftArm.lower.rotation.z = 0.32 + Math.sin(modeTime * 2.1 + 1.4) * 0.05;
+
+      clippy.group.position.y += (0.03 + Math.abs(breathe) * 0.05) * settle;
+      clippy.group.rotation.y += sway * 0.09 * settle;
+      clippy.head.rotation.z += (-0.14 + sway * 0.04) * settle;
+
+      const lookX = Math.sin(modeTime * 0.75 + Math.sin(modeTime * 2.2) * 0.35) * 0.52;
+      const lookY = 1.45 + Math.cos(modeTime * 0.85 + 0.6) * 0.34;
+      clippy.setLookTarget({ x: lookX, y: lookY, z: 5.4 });
     },
   },
 });

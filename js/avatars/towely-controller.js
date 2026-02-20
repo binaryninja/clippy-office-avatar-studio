@@ -6,7 +6,7 @@ import { createUniversalMouth } from "../lib/mouth-rig.js";
 import "../lib/shared-props.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
-const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate"];
+const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate", "thinking", "typing", "reading", "searching", "error", "success", "listening"];
 const EXPRESSION_CHOICES = ["neutral", "smug", "angry", "startled"];
 const SIL_VISEME = "sil";
 
@@ -116,6 +116,107 @@ function sampleModePose(mode, t) {
       rightShoulder: 0.94 - Math.sin(t * 12) * 0.3,
       leftElbow: -0.5 + Math.sin(t * 13.4) * 0.28,
       rightElbow: 0.5 - Math.sin(t * 13.4) * 0.28,
+    };
+  }
+
+  if (mode === "thinking") {
+    return {
+      hop: Math.abs(Math.sin(t * 1.4)) * 0.02,
+      sway: Math.sin(t * 0.9) * 0.04,
+      bodyTiltX: 0.06 + Math.sin(t * 1.2) * 0.03,
+      bodyTiltZ: 0.08 + Math.sin(t * 0.8) * 0.04,
+      spinY: Math.sin(t * 0.6) * 0.03,
+      leftShoulder: -0.12,
+      rightShoulder: -0.72 + Math.sin(t * 1.8) * 0.06,
+      leftElbow: -0.08,
+      rightElbow: -0.92 + Math.sin(t * 2.1) * 0.05,
+    };
+  }
+
+  if (mode === "typing") {
+    return {
+      hop: Math.abs(Math.sin(t * 6.4)) * 0.02,
+      sway: Math.sin(t * 2.1) * 0.02,
+      bodyTiltX: 0.1 + Math.sin(t * 3.2) * 0.02,
+      bodyTiltZ: Math.sin(t * 4.8) * 0.03,
+      spinY: Math.sin(t * 1.1) * 0.01,
+      leftShoulder: -0.52 + Math.sin(t * 9.2) * 0.08,
+      rightShoulder: 0.52 - Math.sin(t * 9.2 + 1.6) * 0.08,
+      leftElbow: -0.62 + Math.sin(t * 11.4) * 0.12,
+      rightElbow: 0.62 - Math.sin(t * 11.4 + 1.6) * 0.12,
+    };
+  }
+
+  if (mode === "reading") {
+    return {
+      hop: Math.abs(Math.sin(t * 1.6)) * 0.01,
+      sway: Math.sin(t * 0.7) * 0.01,
+      bodyTiltX: 0.08 + Math.sin(t * 1.0) * 0.02,
+      bodyTiltZ: Math.sin(t * 0.9) * 0.02,
+      spinY: Math.sin(t * 0.5) * 0.01,
+      leftShoulder: -0.08,
+      rightShoulder: 0.08,
+      leftElbow: -0.04,
+      rightElbow: 0.04,
+    };
+  }
+
+  if (mode === "searching") {
+    return {
+      hop: Math.abs(Math.sin(t * 2.8)) * 0.06,
+      sway: Math.sin(t * 1.8) * 0.1,
+      bodyTiltX: Math.sin(t * 2.4) * 0.08,
+      bodyTiltZ: Math.sin(t * 1.6) * 0.14,
+      spinY: Math.sin(t * 1.6) * 0.18,
+      leftShoulder: -0.14,
+      rightShoulder: -0.62 + Math.sin(t * 2.2) * 0.1,
+      leftElbow: -0.06,
+      rightElbow: -0.38 + Math.sin(t * 2.6) * 0.08,
+    };
+  }
+
+  if (mode === "error") {
+    const decay = Math.exp(-t * 2.8);
+    const shake = Math.sin(t * 28) * 0.14 * decay;
+    return {
+      hop: Math.max(0, Math.sin(t * 14) * 0.18 * decay),
+      sway: shake,
+      bodyTiltX: Math.sin(t * 22) * 0.1 * decay,
+      bodyTiltZ: shake * 0.7,
+      spinY: shake * 0.3,
+      leftShoulder: -0.38 * decay,
+      rightShoulder: 0.38 * decay,
+      leftElbow: -0.32 * decay,
+      rightElbow: 0.32 * decay,
+    };
+  }
+
+  if (mode === "success") {
+    const decay = Math.exp(-t * 3.2);
+    return {
+      hop: Math.max(0, Math.sin(t * 8) * 0.12 * decay) + Math.abs(Math.sin(t * 2.2)) * 0.02,
+      sway: Math.sin(t * 1.8) * 0.02,
+      bodyTiltX: -0.06 * decay + Math.sin(t * 1.6) * 0.02,
+      bodyTiltZ: Math.sin(t * 1.4) * 0.02,
+      spinY: Math.sin(t * 0.8) * 0.02,
+      leftShoulder: -0.04,
+      rightShoulder: 0.04,
+      leftElbow: -0.02,
+      rightElbow: 0.02,
+    };
+  }
+
+  if (mode === "listening") {
+    return {
+      hop: Math.abs(Math.sin(t * 1.6)) * 0.01,
+      sway: Math.sin(t * 0.8) * 0.01,
+      bodyTiltX: 0.05 + Math.sin(t * 1.1) * 0.015,
+      bodyTiltZ: Math.sin(t * 0.9) * 0.02,
+      spinY: Math.sin(t * 0.5) * 0.01,
+      leftShoulder: -0.04,
+      rightShoulder: 0.04,
+      leftElbow: -0.02,
+      rightElbow: 0.02,
     };
   }
 
@@ -413,8 +514,17 @@ export function createTowelyController({ THREE, scene, initialState, stageTopY, 
     avatar.rightArm.elbow.rotation.z = runtime.rightElbowBase + pose.rightElbow + runtime.rightArmFollow * 0.18;
 
     const lookSmoothing = Math.min(1, dt * 10);
-    runtime.lookX += (runtime.lookTargetX - runtime.lookX) * lookSmoothing;
-    runtime.lookY += (runtime.lookTargetY - runtime.lookY) * lookSmoothing;
+
+    // Reading mode: override eye target with horizontal scan
+    if (runtime.currentMode === "reading") {
+      const scanX = Math.sin(t * 1.8) * 0.07;
+      const scanY = -0.02 + Math.sin(t * 0.6) * 0.01;
+      runtime.lookX += (scanX - runtime.lookX) * lookSmoothing;
+      runtime.lookY += (scanY - runtime.lookY) * lookSmoothing;
+    } else {
+      runtime.lookX += (runtime.lookTargetX - runtime.lookX) * lookSmoothing;
+      runtime.lookY += (runtime.lookTargetY - runtime.lookY) * lookSmoothing;
+    }
 
     const lookX = clamp(runtime.lookX, -0.08, 0.08);
     const lookY = clamp(runtime.lookY, -0.055, 0.055);

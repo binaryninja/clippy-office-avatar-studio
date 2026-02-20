@@ -12,7 +12,7 @@ import {
 import "../lib/shared-props.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
-const MODE_CHOICES = ["idle", "bounce", "dance", "wiggle", "spin"];
+const MODE_CHOICES = ["idle", "bounce", "dance", "wiggle", "spin", "thinking", "typing", "reading", "searching", "error", "success", "listening"];
 const EXPRESSION_CHOICES = ["neutral", "happy", "mischievous", "surprised"];
 
 function expressionProfile(expression) {
@@ -136,6 +136,108 @@ function sampleModePose(mode, t) {
       earWiggle: Math.sin(t * 12) * 0.06,
       bodyTiltX: Math.sin(t * 5.1) * 0.04,
       bodyTiltZ: Math.sin(t * 5.6) * 0.06,
+    };
+  }
+
+  if (mode === "thinking") {
+    return {
+      hop: Math.abs(Math.sin(t * 1.4)) * 0.02,
+      sway: Math.sin(t * 0.9) * 0.03,
+      ...squashStretch(1 + Math.sin(t * 1.6) * 0.02),
+      spinY: Math.sin(t * 0.6) * 0.04,
+      leftArmZ: 0.5,
+      rightArmZ: -1.2 + Math.sin(t * 1.8) * 0.08,
+      earWiggle: Math.sin(t * 2.2) * 0.04,
+      bodyTiltX: 0.06 + Math.sin(t * 1.1) * 0.03,
+      bodyTiltZ: 0.06 + Math.sin(t * 0.8) * 0.04,
+    };
+  }
+
+  if (mode === "typing") {
+    return {
+      hop: Math.abs(Math.sin(t * 6.2)) * 0.02,
+      sway: Math.sin(t * 2.2) * 0.02,
+      ...squashStretch(1 + Math.sin(t * 8.4) * 0.03),
+      spinY: Math.sin(t * 1.1) * 0.02,
+      leftArmZ: 0.9 + Math.sin(t * 10.2) * 0.15,
+      rightArmZ: -0.9 - Math.sin(t * 10.2 + 1.6) * 0.15,
+      earWiggle: Math.sin(t * 6.4) * 0.04,
+      bodyTiltX: 0.08 + Math.sin(t * 3.4) * 0.02,
+      bodyTiltZ: Math.sin(t * 4.8) * 0.03,
+    };
+  }
+
+  if (mode === "reading") {
+    return {
+      hop: Math.abs(Math.sin(t * 1.4)) * 0.01,
+      sway: Math.sin(t * 0.7) * 0.01,
+      ...squashStretch(1 + Math.sin(t * 1.8) * 0.01),
+      spinY: Math.sin(t * 0.4) * 0.01,
+      leftArmZ: 0.5,
+      rightArmZ: -0.5,
+      earWiggle: Math.sin(t * 1.6) * 0.02,
+      bodyTiltX: 0.06 + Math.sin(t * 1.0) * 0.02,
+      bodyTiltZ: Math.sin(t * 0.8) * 0.02,
+    };
+  }
+
+  if (mode === "searching") {
+    return {
+      hop: Math.abs(Math.sin(t * 2.6)) * 0.06,
+      sway: Math.sin(t * 1.6) * 0.1,
+      ...squashStretch(1 + Math.sin(t * 3.2) * 0.04),
+      spinY: Math.sin(t * 1.4) * 0.22,
+      leftArmZ: 0.4,
+      rightArmZ: -1.1 + Math.sin(t * 2.2) * 0.12,
+      earWiggle: Math.sin(t * 3.8) * 0.1,
+      bodyTiltX: Math.sin(t * 2.2) * 0.08,
+      bodyTiltZ: Math.sin(t * 1.4) * 0.12,
+    };
+  }
+
+  if (mode === "error") {
+    const decay = Math.exp(-t * 2.8);
+    const shake = Math.sin(t * 28) * decay;
+    const ss = squashStretch(1 + shake * 0.08);
+    return {
+      hop: Math.max(0, Math.sin(t * 14) * 0.2 * decay),
+      sway: shake * 0.14,
+      ...ss,
+      spinY: shake * 0.08,
+      leftArmZ: 0.3 + 0.4 * decay,
+      rightArmZ: -0.3 - 0.4 * decay,
+      earWiggle: shake * 0.12,
+      bodyTiltX: Math.sin(t * 22) * 0.1 * decay,
+      bodyTiltZ: shake * 0.1,
+    };
+  }
+
+  if (mode === "success") {
+    const decay = Math.exp(-t * 3.2);
+    return {
+      hop: Math.max(0, Math.sin(t * 8) * 0.14 * decay) + Math.abs(Math.sin(t * 2.0)) * 0.02,
+      sway: Math.sin(t * 1.6) * 0.02,
+      ...squashStretch(1 + Math.max(0, Math.sin(t * 8)) * 0.08 * decay),
+      spinY: Math.sin(t * 0.8) * 0.02,
+      leftArmZ: 0.5,
+      rightArmZ: -0.5,
+      earWiggle: Math.sin(t * 4.2) * 0.06 * decay + Math.sin(t * 2.4) * 0.02,
+      bodyTiltX: -0.06 * decay + Math.sin(t * 1.4) * 0.02,
+      bodyTiltZ: Math.sin(t * 1.2) * 0.02,
+    };
+  }
+
+  if (mode === "listening") {
+    return {
+      hop: Math.abs(Math.sin(t * 1.6)) * 0.01,
+      sway: Math.sin(t * 0.8) * 0.01,
+      ...squashStretch(1 + Math.sin(t * 2.0) * 0.015),
+      spinY: Math.sin(t * 0.5) * 0.01,
+      leftArmZ: 0.55,
+      rightArmZ: -0.55,
+      earWiggle: Math.sin(t * 2.0) * 0.03,
+      bodyTiltX: 0.04 + Math.sin(t * 1.0) * 0.015,
+      bodyTiltZ: Math.sin(t * 0.8) * 0.02,
     };
   }
 

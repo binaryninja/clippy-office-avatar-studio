@@ -6,7 +6,7 @@ import { createUniversalMouth } from "../lib/mouth-rig.js";
 import "../lib/shared-props.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
-const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate"];
+const MODE_CHOICES = ["idle", "bob", "wave", "spin", "celebrate", "thinking", "typing", "reading", "searching", "error", "success", "listening"];
 const EXPRESSION_CHOICES = ["neutral", "smile", "determined", "startled"];
 const SIL_VISEME = "sil";
 const THUMBTACK_EYE_RADIUS = 0.07;
@@ -196,6 +196,58 @@ export function createThumbtackController({ THREE, scene, initialState, profile,
       bodyTiltZ = Math.sin(t * 12.1) * 0.18;
       spinY = Math.sin(t * 9.3) * 0.22;
       pinSpring = Math.sin(t * 14.2) * 0.04;
+    } else if (state.mode === "thinking") {
+      hop = Math.abs(Math.sin(t * 1.4)) * 0.03;
+      swayX = Math.sin(t * 0.9) * 0.03;
+      bodyTiltX = 0.06 + Math.sin(t * 1.2) * 0.03;
+      bodyTiltZ = 0.08 + Math.sin(t * 0.8) * 0.04;
+      spinY = Math.sin(t * 0.6) * 0.03;
+      pinSpring = Math.sin(t * 2.4) * 0.008;
+    } else if (state.mode === "typing") {
+      hop = Math.abs(Math.sin(t * 6.4)) * 0.03;
+      swayX = Math.sin(t * 2.2) * 0.02;
+      bodyTiltX = 0.08 + Math.sin(t * 3.2) * 0.03;
+      bodyTiltZ = Math.sin(t * 9.6) * 0.06;
+      spinY = Math.sin(t * 1.2) * 0.02;
+      pinSpring = Math.sin(t * 11.4) * 0.025;
+    } else if (state.mode === "reading") {
+      hop = Math.abs(Math.sin(t * 1.6)) * 0.02;
+      swayX = Math.sin(t * 0.7) * 0.01;
+      bodyTiltX = 0.06 + Math.sin(t * 1.0) * 0.02;
+      bodyTiltZ = Math.sin(t * 0.8) * 0.02;
+      spinY = Math.sin(t * 0.5) * 0.01;
+      pinSpring = Math.sin(t * 2.0) * 0.006;
+    } else if (state.mode === "searching") {
+      hop = Math.abs(Math.sin(t * 2.6)) * 0.06;
+      swayX = Math.sin(t * 1.6) * 0.08;
+      bodyTiltX = Math.sin(t * 2.2) * 0.08;
+      bodyTiltZ = Math.sin(t * 1.4) * 0.14;
+      spinY = Math.sin(t * 1.4) * 0.2;
+      pinSpring = Math.sin(t * 4.8) * 0.02;
+    } else if (state.mode === "error") {
+      const decay = Math.exp(-t * 2.8);
+      const shake = Math.sin(t * 28) * decay;
+      hop = Math.max(0, Math.sin(t * 14) * 0.2 * decay);
+      swayX = shake * 0.12;
+      bodyTiltX = Math.sin(t * 22) * 0.1 * decay;
+      bodyTiltZ = shake * 0.1;
+      spinY = shake * 0.06;
+      pinSpring = shake * 0.03;
+    } else if (state.mode === "success") {
+      const decay = Math.exp(-t * 3.2);
+      hop = Math.max(0, Math.sin(t * 8) * 0.12 * decay) + Math.abs(Math.sin(t * 2.2)) * 0.02;
+      swayX = Math.sin(t * 1.6) * 0.02;
+      bodyTiltX = -0.06 * decay + Math.sin(t * 1.6) * 0.02;
+      bodyTiltZ = Math.sin(t * 1.2) * 0.02;
+      spinY = Math.sin(t * 0.8) * 0.02;
+      pinSpring = Math.sin(t * 3.8) * 0.012;
+    } else if (state.mode === "listening") {
+      hop = Math.abs(Math.sin(t * 1.6)) * 0.02;
+      swayX = Math.sin(t * 0.8) * 0.01;
+      bodyTiltX = 0.04 + Math.sin(t * 1.0) * 0.02;
+      bodyTiltZ = Math.sin(t * 0.8) * 0.02;
+      spinY = Math.sin(t * 0.5) * 0.01;
+      pinSpring = Math.sin(t * 2.0) * 0.006;
     }
 
     avatar.group.position.x = runtime.baseX + swayX;

@@ -19,13 +19,69 @@ function disposeObject3D(root) {
 
 export const officePackPlugin = createClippyPlugin({
   animations: {
-    think: {
+    typing: {
       defaultExpression: "focused",
       apply({ clippy, modeTime }) {
-        clippy.head.rotation.z += Math.sin(modeTime * 3.5) * 0.11;
-        clippy.leftArm.upper.rotation.z = -0.34 + Math.sin(modeTime * 5.8) * 0.08;
-        clippy.rightArm.upper.rotation.z = 0.35 + Math.sin(modeTime * 4.2) * 0.06;
-        clippy.rightArm.lower.rotation.z = -0.58;
+        clippy.head.rotation.z += Math.sin(modeTime * 3.0) * 0.04;
+        clippy.head.rotation.x += 0.06 + Math.sin(modeTime * 2.4) * 0.02;
+        clippy.leftArm.upper.rotation.z = -0.62 + Math.sin(modeTime * 10.2) * 0.1;
+        clippy.leftArm.lower.rotation.z = -0.48 + Math.sin(modeTime * 12.4) * 0.14;
+        clippy.rightArm.upper.rotation.z = 0.62 - Math.sin(modeTime * 10.2 + 1.6) * 0.1;
+        clippy.rightArm.lower.rotation.z = 0.48 - Math.sin(modeTime * 12.4 + 1.6) * 0.14;
+      },
+    },
+
+    reading: {
+      defaultExpression: "focused",
+      apply({ clippy, modeTime }) {
+        clippy.head.rotation.x += 0.06 + Math.sin(modeTime * 0.8) * 0.02;
+        clippy.head.rotation.z += Math.sin(modeTime * 0.6) * 0.03;
+        clippy.leftArm.upper.rotation.z = -0.22 + Math.sin(modeTime * 1.4) * 0.03;
+        clippy.rightArm.upper.rotation.z = 0.22 - Math.sin(modeTime * 1.4) * 0.03;
+      },
+    },
+
+    searching: {
+      defaultExpression: "surprised",
+      apply({ clippy, modeTime }) {
+        clippy.head.rotation.z += Math.sin(modeTime * 1.8) * 0.18;
+        clippy.head.rotation.x += Math.sin(modeTime * 2.4) * 0.08;
+        clippy.leftArm.upper.rotation.z = -0.2;
+        clippy.rightArm.upper.rotation.z = -0.52 + Math.sin(modeTime * 2.2) * 0.1;
+        clippy.rightArm.lower.rotation.z = -0.34 + Math.sin(modeTime * 2.6) * 0.08;
+      },
+    },
+
+    error: {
+      defaultExpression: "surprised",
+      apply({ clippy, modeTime }) {
+        const decay = Math.exp(-modeTime * 2.8);
+        const shake = Math.sin(modeTime * 28) * decay;
+        clippy.head.rotation.z += shake * 0.16;
+        clippy.head.position.y += Math.max(0, Math.sin(modeTime * 14) * 0.12 * decay);
+        clippy.leftArm.upper.rotation.z = -0.48 * decay + Math.sin(modeTime * 1.6) * 0.04;
+        clippy.rightArm.upper.rotation.z = 0.48 * decay - Math.sin(modeTime * 1.6) * 0.04;
+      },
+    },
+
+    success: {
+      defaultExpression: "happy",
+      apply({ clippy, modeTime }) {
+        const decay = Math.exp(-modeTime * 3.2);
+        clippy.head.rotation.x += -0.08 * decay;
+        clippy.head.position.y += Math.max(0, Math.sin(modeTime * 8) * 0.08 * decay);
+        clippy.leftArm.upper.rotation.z = -0.16 + Math.sin(modeTime * 1.8) * 0.04;
+        clippy.rightArm.upper.rotation.z = 0.16 - Math.sin(modeTime * 1.8) * 0.04;
+      },
+    },
+
+    listening: {
+      defaultExpression: "neutral",
+      apply({ clippy, modeTime }) {
+        clippy.head.rotation.x += 0.04 + Math.sin(modeTime * 1.0) * 0.015;
+        clippy.head.rotation.z += Math.sin(modeTime * 0.8) * 0.02;
+        clippy.leftArm.upper.rotation.z = -0.18 + Math.sin(modeTime * 1.2) * 0.02;
+        clippy.rightArm.upper.rotation.z = 0.18 - Math.sin(modeTime * 1.2) * 0.02;
       },
     },
   },

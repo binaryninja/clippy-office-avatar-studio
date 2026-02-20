@@ -8,7 +8,7 @@ const clippyFields = [
         key: "mode",
         label: "Animation",
         type: "select",
-        options: ["idle", "wave", "celebrate", "spin", "point"],
+        options: ["idle", "wave", "celebrate", "spin", "point", "thinking", "typing", "reading", "searching", "error", "success", "listening"],
         catalogKey: "modes",
       },
       {
@@ -107,7 +107,7 @@ const pinFields = [
         key: "mode",
         label: "Animation",
         type: "select",
-        options: ["idle", "bob", "wave", "spin", "celebrate"],
+        options: ["idle", "bob", "wave", "spin", "celebrate", "thinking", "typing", "reading", "searching", "error", "success", "listening"],
       },
       {
         key: "expression",
@@ -202,7 +202,7 @@ const puffballFields = [
         key: "mode",
         label: "Animation",
         type: "select",
-        options: ["idle", "bounce", "dance", "wiggle", "spin"],
+        options: ["idle", "bounce", "dance", "wiggle", "spin", "thinking", "typing", "reading", "searching", "error", "success", "listening"],
       },
       {
         key: "expression",
@@ -287,7 +287,7 @@ const towelyFields = [
         key: "mode",
         label: "Animation",
         type: "select",
-        options: ["idle", "bob", "wave", "spin", "celebrate"],
+        options: ["idle", "bob", "wave", "spin", "celebrate", "thinking", "typing", "reading", "searching", "error", "success", "listening"],
       },
       {
         key: "expression",
@@ -410,7 +410,7 @@ export const AVATAR_DEFINITIONS = {
 
       mouthRigX: 0,
       mouthRigY: -0.34,
-      mouthRigZ: 0,
+      mouthRigZ: 0.16,
       mouthRigScale: 1,
       mouthRigRotX: 0,
       mouthRigRotY: 0,
@@ -737,4 +737,3 @@ export const SCENE_PRESETS = {
     orbitTarget: [0, -0.6, 0],
   },
 };
-

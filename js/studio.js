@@ -15,6 +15,8 @@ import { clamp, randomBetween, randomColor } from "./lib/utils.js";
 import { createRealtimeVoice } from "./lib/realtime-voice.js";
 import { createElevenLabsVoice } from "./lib/elevenlabs-voice.js";
 import { assertControllerInterface } from "./lib/controller-utils.js";
+import { mapWsEventToAnimation } from "./lib/ws-event-mapper.js";
+import { createWsPreview } from "./lib/ws-preview.js";
 
 const canvas = document.getElementById("studioCanvas");
 const stageEl = document.querySelector(".stage");
@@ -289,6 +291,15 @@ let devVowelDemoRunId = 0;
 const controlRegistry = new Map();
 const characterProfiles = loadCharacterProfiles();
 let profileAutosaveTimer = null;
+let wsTransientTimer = null;
+let wsSustainedMode = "idle";
+let _wsPreviewInstance = null;
+let wsThinkingText = "";
+let wsThinkingClearTimer = null;
+
+const THINKING_TOKEN_PLACEHOLDER = "...";
+const THINKING_TEXT_MAX_LENGTH = 280;
+const THINKING_TEXT_HOLD_MS = 2200;
 
 const pointer = {
   x: 0,
@@ -324,6 +335,114 @@ function setAssistantMouth({ viseme = "sil", strength = 0, level = 0 } = {}) {
     strength: clamp(Number(strength) || 0, 0, 1),
   };
   assistantSpeechLevel = clamp(Number(level) || 0, 0, 1);
+}
+
+function clearWsThinkingTimer() {
+  if (!wsThinkingClearTimer) return;
+  clearTimeout(wsThinkingClearTimer);
+  wsThinkingClearTimer = null;
+}
+
+function clearWsThoughtBubble() {
+  clearWsThinkingTimer();
+  wsThinkingText = "";
+  pushClippyThoughtText("", { visible: false });
+}
+
+function trimWsThinkingText(value, maxLength = THINKING_TEXT_MAX_LENGTH) {
+  const text = String(value || "");
+  if (text.length <= maxLength) return text;
+  return text.slice(text.length - maxLength);
+}
+
+function getClippyThoughtController() {
+  const runtime = avatarRuntimeRegistry.get("clippy");
+  if (!runtime || typeof runtime.controller?.setThoughtText !== "function") {
+    return null;
+  }
+  return runtime.controller;
+}
+
+function pushClippyThoughtText(text, options = {}) {
+  const controller = getClippyThoughtController();
+  if (!controller) return;
+  controller.setThoughtText(text, options);
+}
+
+function extractWsToken(event) {
+  const candidates = [
+    event?.token,
+    event?.delta,
+    event?.text,
+    event?.content,
+    event?.message,
+    event?.payload?.token,
+    event?.payload?.delta,
+    event?.payload?.text,
+    event?.data?.token,
+    event?.data?.delta,
+    event?.data?.text,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+function handleWsThoughtEvent(event) {
+  if (!event || !event.type) return;
+
+  if (event.type === "agent.thinking_start") {
+    clearWsThinkingTimer();
+    wsThinkingText = "";
+    pushClippyThoughtText(THINKING_TOKEN_PLACEHOLDER, { visible: true });
+    return;
+  }
+
+  if (event.type === "agent.thinking_token") {
+    clearWsThinkingTimer();
+    const token = extractWsToken(event);
+    if (!token) {
+      if (!wsThinkingText) {
+        pushClippyThoughtText(THINKING_TOKEN_PLACEHOLDER, { visible: true });
+      }
+      return;
+    }
+    wsThinkingText = trimWsThinkingText(`${wsThinkingText}${token}`);
+    pushClippyThoughtText(wsThinkingText, { visible: true });
+    return;
+  }
+
+  if (event.type === "agent.thinking_done") {
+    clearWsThinkingTimer();
+    if (!wsThinkingText) {
+      pushClippyThoughtText("", { visible: false });
+      return;
+    }
+
+    pushClippyThoughtText(wsThinkingText, { visible: true });
+    wsThinkingClearTimer = setTimeout(() => {
+      wsThinkingClearTimer = null;
+      wsThinkingText = "";
+      pushClippyThoughtText("", { visible: false });
+    }, THINKING_TEXT_HOLD_MS);
+    return;
+  }
+
+  if (
+    event.type === "agent.text_token"
+    || event.type === "agent.text_done"
+    || event.type === "agent.tool_use_start"
+  ) {
+    clearWsThoughtBubble();
+    return;
+  }
+
+  if (event.type === "agent.response_complete" || event.type === "session.error") {
+    clearWsThoughtBubble();
+  }
 }
 
 function getActiveCharacterProfile() {
@@ -518,6 +637,42 @@ async function runDevVowelDemo() {
 
   if (runId === devVowelDemoRunId && !isAnyVoiceConnected()) {
     setAssistantMouth();
+  }
+}
+
+function handleWsEvent(event) {
+  handleWsThoughtEvent(event);
+
+  const mapping = mapWsEventToAnimation(event);
+  if (!mapping) return;
+
+  const runtime = getAvatarRuntime();
+  if (!runtime) return;
+
+  // Clear any pending transient revert
+  if (wsTransientTimer) {
+    clearTimeout(wsTransientTimer);
+    wsTransientTimer = null;
+  }
+
+  if (mapping.transient) {
+    // Transient mode: apply, then revert to previous sustained mode
+    runtime.state.mode = mapping.mode;
+    applyStateToController();
+
+    wsTransientTimer = setTimeout(() => {
+      wsTransientTimer = null;
+      const rt = getAvatarRuntime();
+      if (rt) {
+        rt.state.mode = wsSustainedMode;
+        applyStateToController();
+      }
+    }, mapping.durationMs || 1000);
+  } else {
+    // Sustained mode: update both current and sustained tracking
+    wsSustainedMode = mapping.mode;
+    runtime.state.mode = mapping.mode;
+    applyStateToController();
   }
 }
 
@@ -1037,6 +1192,21 @@ function startRenderLoop() {
   animate();
 }
 
+function initWsPreview() {
+  const panelScroll = document.querySelector(".panel-scroll");
+  if (!panelScroll || !controlsEl) return;
+
+  // Create a container div and insert before the controlSections element
+  const container = document.createElement("div");
+  container.id = "wsPreviewContainer";
+  panelScroll.insertBefore(container, controlsEl);
+
+  _wsPreviewInstance = createWsPreview({
+    containerEl: container,
+    onEvent: handleWsEvent,
+  });
+}
+
 function init() {
   populateAvatarSelect();
   realtimeVoice.init();
@@ -1044,6 +1214,7 @@ function init() {
   installGlobalHandlers();
   applyScenePreset();
   createAvatarRuntimes();
+  initWsPreview();
   resize();
   loadAvatar(activeAvatarId, { instant: true, silent: true });
   startRenderLoop();

@@ -4,10 +4,12 @@ import { clamp, constrainPupilToEyeSurface } from "../lib/utils.js";
 import { registerEngine } from "../engines.js";
 import { createPropManager, listSharedProps, getSharedProp, loadPropPlacement, savePropPlacement, applyPlacementToObject } from "../lib/prop-system.js";
 import { createUniversalMouth, VISEME_POSES } from "../lib/mouth-rig.js";
+import { Text } from "troika-three-text";
+import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 import "../lib/shared-props.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
-const FALLBACK_MODES = ["idle", "wave", "celebrate", "spin", "point"];
+const FALLBACK_MODES = ["idle", "wave", "celebrate", "spin", "point", "thinking", "typing", "reading", "searching", "error", "success", "listening"];
 const EXPRESSION_CHOICES = ["neutral", "happy", "focused", "surprised"];
 const SIL_VISEME = "sil";
 const LIP_COLOR = 0xb53b4e;
@@ -19,6 +21,17 @@ const CLIPPY_PUPIL_SURFACE_SETTINGS = Object.freeze({
   centerProtrusion: 0.1,
   edgeInset: 0.16,
   edgeInsetPower: 2.2,
+});
+const THOUGHT_TEXT_FONT_URL = new URL("../../assets/rajdhani-600.ttf", import.meta.url).href;
+const MOUTH_PLACEMENT_VERSION = 2;
+const MOUTH_PLACEMENT_LIMITS = Object.freeze({
+  x: [-0.5, 0.5],
+  y: [-0.5, 0.5],
+  z: [-0.3, 0.3],
+  scale: [0.3, 2.5],
+  rotX: [-3.14, 3.14],
+  rotY: [-3.14, 3.14],
+  rotZ: [-3.14, 3.14],
 });
 
 function expressionProfile(expression) {
@@ -60,6 +73,256 @@ function setMaterialEmissive(material, value, intensity) {
   material.needsUpdate = true;
 }
 
+function sanitizeMouthPlacementValue(value, [min, max], fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return clamp(parsed, min, max);
+}
+
+function sanitizeThoughtText(value, maxLength = 280) {
+  const cleaned = String(value ?? "")
+    .replace(/\r/g, "")
+    .replace(/[^\n\t\x20-\x7e]/g, "");
+  return cleaned.slice(0, maxLength);
+}
+
+function wrapThoughtText(value, maxCharsPerLine = 40, maxLines = 6) {
+  const normalized = String(value || "").replace(/[ \t]+/g, " ").trim();
+  if (!normalized) return [];
+
+  const words = normalized.split(" ");
+  const lines = [];
+  let current = words.shift() || "";
+  let truncated = false;
+
+  for (const word of words) {
+    const candidate = `${current} ${word}`;
+    if (candidate.length <= maxCharsPerLine) {
+      current = candidate;
+      continue;
+    }
+    lines.push(current);
+    current = word;
+    if (lines.length >= maxLines - 1) {
+      truncated = true;
+      break;
+    }
+  }
+
+  if (lines.length < maxLines && current) {
+    lines.push(current);
+  } else if (current) {
+    truncated = true;
+  }
+
+  if (truncated && lines.length) {
+    const lastIndex = lines.length - 1;
+    const trimmed = lines[lastIndex]
+      .replace(/\.\.\.$/, "")
+      .slice(0, Math.max(0, maxCharsPerLine - 3))
+      .trimEnd();
+    lines[lastIndex] = `${trimmed}...`;
+  }
+
+  return lines.slice(0, maxLines);
+}
+
+function createThoughtBubble({ THREE, anchor }) {
+  if (!THREE || !anchor || typeof document === "undefined") return null;
+
+  const group = new THREE.Group();
+  group.position.set(1.66, 2.24, 0.24);
+  group.scale.setScalar(2);
+  group.visible = false;
+
+  const cloudGroup = new THREE.Group();
+  group.add(cloudGroup);
+
+  const cloudMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    roughness: 0.74,
+    metalness: 0,
+    clearcoat: 0.08,
+    clearcoatRoughness: 0.92,
+    sheen: 0.35,
+    sheenRoughness: 0.9,
+    sheenColor: 0xffffff,
+    emissive: 0xf2f8ff,
+    emissiveIntensity: 0.22,
+    transparent: true,
+    opacity: 0,
+  });
+
+  const cloudResolution = 64;
+  const cloudSubtract = 9.8;
+
+  const cloudSurface = new MarchingCubes(cloudResolution, cloudMaterial, false, false, 42000);
+  cloudSurface.scale.set(2.32, 1.48, 1.18);
+  cloudSurface.position.set(0, 0.05, 0.03);
+  cloudSurface.isolation = 60;
+  cloudSurface.frustumCulled = false;
+  cloudGroup.add(cloudSurface);
+
+  const cloudBallSpecs = [
+    { x: 0, y: 0.1, z: 0, r: 0.62 },
+    { x: 0, y: 0.02, z: 0.01, r: 0.44 },
+    { x: 0, y: 0.2, z: 0.02, r: 0.4 },
+    { x: -0.3, y: 0.22, z: 0.02, r: 0.33 },
+    { x: 0.3, y: 0.22, z: 0.02, r: 0.33 },
+    { x: 0, y: 0.33, z: 0.02, r: 0.31 },
+    { x: -0.52, y: 0.06, z: 0.01, r: 0.34 },
+    { x: 0.52, y: 0.06, z: 0.01, r: 0.34 },
+    { x: -0.62, y: 0.02, z: 0.02, r: 0.24 },
+    { x: 0.62, y: 0.02, z: 0.02, r: 0.24 },
+    { x: -0.36, y: -0.14, z: 0.03, r: 0.33 },
+    { x: 0.36, y: -0.14, z: 0.03, r: 0.33 },
+    { x: -0.55, y: -0.12, z: 0.03, r: 0.22 },
+    { x: 0.55, y: -0.12, z: 0.03, r: 0.22 },
+    { x: 0, y: -0.22, z: 0.03, r: 0.38 },
+    { x: -0.24, y: -0.27, z: 0.04, r: 0.25 },
+    { x: 0.24, y: -0.27, z: 0.04, r: 0.25 },
+    { x: 0, y: -0.36, z: 0.05, r: 0.27 },
+  ];
+
+  function toCloudFieldCoords(x, y, z, offsets = { x: 0, y: 0, z: 0 }) {
+    return {
+      x: clamp(0.5 + (x + offsets.x) * 0.28, 0.08, 0.92),
+      y: clamp(0.54 + (y + offsets.y) * 0.42, 0.08, 0.92),
+      z: clamp(0.5 + (z + offsets.z) * 0.6, 0.08, 0.92),
+    };
+  }
+
+  function buildCloudSurface(surface, {
+    radiusScale = 1,
+    offsets = { x: 0, y: 0, z: 0 },
+  } = {}) {
+    surface.reset();
+    for (const spec of cloudBallSpecs) {
+      const pos = toCloudFieldCoords(spec.x, spec.y, spec.z, offsets);
+      const normalizedRadius = clamp(spec.r * 0.3 * radiusScale, 0.06, 0.19);
+      const strength = cloudSubtract * normalizedRadius * normalizedRadius;
+      surface.addBall(pos.x, pos.y, pos.z, strength, cloudSubtract);
+    }
+    surface.blur(1.05);
+    surface.update();
+  }
+
+  buildCloudSurface(cloudSurface, {
+    radiusScale: 1,
+    offsets: { x: 0, y: 0, z: 0 },
+  });
+
+  const tailGeometry = new THREE.SphereGeometry(0.25, 20, 16);
+  const tailPuffs = [
+    { x: -0.34, y: -0.56, z: 0.11, s: 0.26 },
+    { x: -0.56, y: -0.74, z: 0.13, s: 0.17 },
+  ];
+  for (const tail of tailPuffs) {
+    const puff = new THREE.Mesh(tailGeometry, cloudMaterial);
+    puff.position.set(tail.x, tail.y, tail.z);
+    puff.scale.set(tail.s, tail.s, tail.s);
+    cloudGroup.add(puff);
+  }
+
+  const textMesh = new Text();
+  textMesh.renderOrder = 2000;
+  textMesh.position.set(0, 0.02, 0.5);
+  textMesh.font = THOUGHT_TEXT_FONT_URL;
+  textMesh.fontSize = 0.5;
+  textMesh.maxWidth = 1.35;
+  textMesh.lineHeight = 1.16;
+  textMesh.letterSpacing = 0.004;
+  textMesh.anchorX = "center";
+  textMesh.anchorY = "middle";
+  textMesh.textAlign = "center";
+  textMesh.whiteSpace = "normal";
+  textMesh.overflowWrap = "break-word";
+  textMesh.color = 0x020617;
+  textMesh.outlineColor = 0xffffff;
+  textMesh.outlineWidth = "10%";
+  textMesh.depthOffset = -1;
+  textMesh.frustumCulled = false;
+  textMesh.fillOpacity = 0;
+  textMesh.outlineOpacity = 0;
+  textMesh.text = "...";
+  textMesh.sync(() => {
+    if (!textMesh.material) return;
+    textMesh.material.depthTest = false;
+    textMesh.material.depthWrite = false;
+    textMesh.material.transparent = true;
+    textMesh.material.toneMapped = false;
+    textMesh.material.needsUpdate = true;
+  });
+  group.add(textMesh);
+
+  anchor.add(group);
+
+  const runtime = {
+    text: "",
+    opacity: 0,
+    targetVisible: false,
+    baseX: group.position.x,
+    baseY: group.position.y,
+  };
+
+  function setText(value) {
+    runtime.text = sanitizeThoughtText(value, 280);
+    const lines = wrapThoughtText(runtime.text || "...");
+    textMesh.text = lines.join("\n");
+    textMesh.sync(() => {
+      if (!textMesh.material) return;
+      textMesh.material.depthTest = false;
+      textMesh.material.depthWrite = false;
+      textMesh.material.transparent = true;
+      textMesh.material.toneMapped = false;
+      textMesh.material.needsUpdate = true;
+    });
+  }
+
+  function setVisible(visible) {
+    runtime.targetVisible = Boolean(visible);
+  }
+
+  function update(dt, time) {
+    const safeDt = Number.isFinite(dt) ? dt : 1 / 60;
+    const targetOpacity = runtime.targetVisible ? 1 : 0;
+    const smoothing = Math.min(1, safeDt * (runtime.targetVisible ? 11 : 7));
+
+    runtime.opacity += (targetOpacity - runtime.opacity) * smoothing;
+    cloudMaterial.opacity = runtime.opacity;
+    textMesh.fillOpacity = runtime.opacity;
+    textMesh.outlineOpacity = runtime.opacity * 0.96;
+    group.visible = runtime.opacity > 0.01 || runtime.targetVisible;
+
+    const t = Number.isFinite(time) ? time : 0;
+    group.position.x = runtime.baseX + Math.sin(t * 1.2) * 0.01;
+    group.position.y = runtime.baseY + Math.sin(t * 1.9) * 0.02;
+    group.rotation.y = Math.sin(t * 0.9) * 0.08;
+    group.rotation.x = Math.sin(t * 0.6 + 0.4) * 0.025;
+    const pulse = 1 + Math.sin(t * 1.5 + 0.2) * 0.011;
+    cloudGroup.scale.set(pulse, pulse, pulse);
+  }
+
+  function dispose() {
+    if (group.parent) {
+      group.parent.remove(group);
+    }
+    cloudSurface.geometry.dispose();
+    tailGeometry.dispose();
+    textMesh.dispose();
+    cloudMaterial.dispose();
+  }
+
+  setText("...");
+
+  return {
+    setText,
+    setVisible,
+    update,
+    dispose,
+  };
+}
+
 export function createClippyController({ THREE, scene, initialState, avatarId }) {
   const state = { ...initialState };
   const plugins = [officePackPlugin].filter(Boolean);
@@ -94,6 +357,11 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     // Add the rig group into the head so it moves with the avatar
     clippy.head.add(mouthRig.group);
   }
+
+  const thoughtBubble = createThoughtBubble({
+    THREE,
+    anchor: clippy.head,
+  });
 
   const availableModes = typeof clippy.listAnimations === "function" ? clippy.listAnimations() : FALLBACK_MODES;
   const internalProps = typeof clippy.listProps === "function" ? clippy.listProps() : [];
@@ -148,6 +416,9 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     target: 0,
     visemeKey: SIL_VISEME,
     visemeStrengthTarget: 0,
+  };
+  const thoughtRuntime = {
+    text: "",
   };
 
   function applyMaterialState() {
@@ -224,13 +495,13 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     clippy.leftEye.scale.y *= eyeYFactor;
     clippy.rightEye.scale.y *= eyeYFactor;
 
-    const pupilXZScale = state.pupilScale * baseEyeScale;
+    const pupilXZScale = state.pupilScale * state.eyeScale;
     clippy.leftPupil.scale.x = pupilXZScale;
     clippy.rightPupil.scale.x = pupilXZScale;
     clippy.leftPupil.scale.z = pupilXZScale;
     clippy.rightPupil.scale.z = pupilXZScale;
 
-    const pupilYFactor = state.pupilScale;
+    const pupilYFactor = state.pupilScale * eyeYFactor;
     clippy.leftPupil.scale.y *= pupilYFactor;
     clippy.rightPupil.scale.y *= pupilYFactor;
 
@@ -252,8 +523,12 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     );
     clippy.leftBrow.position.x = -browSpacing;
     clippy.rightBrow.position.x = browSpacing;
-    clippy.leftBrow.position.y = 0.29 + expr.browDrop + state.browLift;
-    clippy.rightBrow.position.y = 0.29 + expr.browDrop + state.browLift;
+    const browBaseY = clamp(CLIPPY_EYE_RADIUS * state.eyeScale * 0.72, 0.24, 0.76);
+    const browBaseZ = clamp(CLIPPY_EYE_RADIUS * state.eyeScale * 0.78, 0.24, 0.62);
+    clippy.leftBrow.position.y = browBaseY + expr.browDrop + state.browLift;
+    clippy.rightBrow.position.y = browBaseY + expr.browDrop + state.browLift;
+    clippy.leftBrow.position.z = browBaseZ;
+    clippy.rightBrow.position.z = browBaseZ;
     clippy.leftBrow.rotation.z = -expr.browTilt - state.browTilt;
     clippy.rightBrow.rotation.z = expr.browTilt + state.browTilt;
     clippy.leftBrow.scale.setScalar(state.browScale);
@@ -274,13 +549,18 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        state.mouthRigX = parsed.x ?? state.mouthRigX;
-        state.mouthRigY = parsed.y ?? state.mouthRigY;
-        state.mouthRigZ = parsed.z ?? state.mouthRigZ;
-        state.mouthRigScale = parsed.scale ?? state.mouthRigScale;
-        state.mouthRigRotX = parsed.rotX ?? state.mouthRigRotX;
-        state.mouthRigRotY = parsed.rotY ?? state.mouthRigRotY;
-        state.mouthRigRotZ = parsed.rotZ ?? state.mouthRigRotZ;
+        if (!parsed || typeof parsed !== "object") return;
+
+        // Ignore legacy placement records created before the rig alignment fix.
+        if (parsed.version !== MOUTH_PLACEMENT_VERSION) return;
+
+        state.mouthRigX = sanitizeMouthPlacementValue(parsed.x, MOUTH_PLACEMENT_LIMITS.x, state.mouthRigX);
+        state.mouthRigY = sanitizeMouthPlacementValue(parsed.y, MOUTH_PLACEMENT_LIMITS.y, state.mouthRigY);
+        state.mouthRigZ = sanitizeMouthPlacementValue(parsed.z, MOUTH_PLACEMENT_LIMITS.z, state.mouthRigZ);
+        state.mouthRigScale = sanitizeMouthPlacementValue(parsed.scale, MOUTH_PLACEMENT_LIMITS.scale, state.mouthRigScale);
+        state.mouthRigRotX = sanitizeMouthPlacementValue(parsed.rotX, MOUTH_PLACEMENT_LIMITS.rotX, state.mouthRigRotX);
+        state.mouthRigRotY = sanitizeMouthPlacementValue(parsed.rotY, MOUTH_PLACEMENT_LIMITS.rotY, state.mouthRigRotY);
+        state.mouthRigRotZ = sanitizeMouthPlacementValue(parsed.rotZ, MOUTH_PLACEMENT_LIMITS.rotZ, state.mouthRigRotZ);
       }
     } catch { /* ignore */ }
   }
@@ -289,6 +569,7 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     const storageKey = `mouth-placement:${avatarId}`;
     try {
       localStorage.setItem(storageKey, JSON.stringify({
+        version: MOUTH_PLACEMENT_VERSION,
         x: state.mouthRigX,
         y: state.mouthRigY,
         z: state.mouthRigZ,
@@ -432,6 +713,7 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     clippy.update(frameDt);
     applyMorphState();
     applyVoiceFrame(frameDt);
+    thoughtBubble?.update(frameDt, clippy.time);
   }
 
   function setVoiceActivity(level = 0) {
@@ -447,7 +729,29 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     voiceRuntime.visemeStrengthTarget = clamp(Number.isFinite(nextStrength) ? nextStrength : 0, 0, 1);
   }
 
+  function setThoughtText(value = "", { append = false, visible = true } = {}) {
+    if (!thoughtBubble) return;
+
+    const nextChunk = sanitizeThoughtText(value, 280);
+    let nextText = append ? `${thoughtRuntime.text}${nextChunk}` : nextChunk;
+    nextText = sanitizeThoughtText(nextText, 280);
+
+    if (nextText.length > 280) {
+      nextText = nextText.slice(nextText.length - 280);
+    }
+
+    thoughtRuntime.text = nextText;
+    if (!nextText) {
+      thoughtBubble.setVisible(false);
+      return;
+    }
+
+    thoughtBubble.setText(nextText);
+    thoughtBubble.setVisible(Boolean(visible));
+  }
+
   function dispose() {
+    thoughtBubble?.dispose();
     propManager.detachAll();
     if (propRuntime.id !== null && !propRuntime.isShared && typeof clippy.detachProp === "function") {
       clippy.detachProp(propRuntime.id);
@@ -469,6 +773,7 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     update,
     setVoiceActivity,
     setVoiceViseme,
+    setThoughtText,
     dispose,
     getAnchors() {
       return {
