@@ -8,7 +8,7 @@ const clippyFields = [
         key: "mode",
         label: "Animation",
         type: "select",
-        options: ["idle", "wave", "celebrate", "spin", "point", "thinking", "typing", "reading", "searching", "error", "success", "listening"],
+        options: ["idle", "wave", "celebrate", "spin", "point", "thinking", "file", "typing", "reading", "searching", "error", "success", "listening"],
         catalogKey: "modes",
       },
       {
@@ -381,6 +381,85 @@ const towelyFields = [
   },
 ];
 
+const hal9000Fields = [
+  {
+    title: "Behavior",
+    fields: [
+      {
+        key: "mode",
+        label: "Animation",
+        type: "select",
+        options: ["idle", "bob", "wave", "spin", "celebrate", "thinking", "typing", "reading", "searching", "error", "success", "listening"],
+      },
+      {
+        key: "expression",
+        label: "Expression",
+        type: "select",
+        options: ["neutral", "calm", "menacing", "critical"],
+      },
+      {
+        key: "propName",
+        label: "Prop",
+        type: "select",
+        options: [NO_PROP_VALUE],
+        catalogKey: "props",
+      },
+      {
+        key: "speed",
+        label: "Playback Speed",
+        type: "range",
+        min: 0.2,
+        max: 2.5,
+        step: 0.05,
+        format: "speed",
+      },
+    ],
+  },
+  {
+    title: "Prop Placement",
+    fields: [
+      { key: "propX", label: "Prop X", type: "range", min: -1.5, max: 1.5, step: 0.01 },
+      { key: "propY", label: "Prop Y", type: "range", min: -1.5, max: 1.5, step: 0.01 },
+      { key: "propZ", label: "Prop Z", type: "range", min: -1.0, max: 1.0, step: 0.01 },
+      { key: "propScale", label: "Prop Scale", type: "range", min: 0.1, max: 3, step: 0.01 },
+      { key: "propRotX", label: "Prop Tilt X", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "propRotY", label: "Prop Tilt Y", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+      { key: "propRotZ", label: "Prop Tilt Z", type: "range", min: -3.14, max: 3.14, step: 0.01 },
+    ],
+  },
+  {
+    title: "Shape",
+    fields: [
+      { key: "scale", label: "Body Scale", type: "range", min: 0.35, max: 2.2, step: 0.01 },
+      { key: "panelWidth", label: "Panel Width", type: "range", min: 0.7, max: 1.5, step: 0.01 },
+      { key: "panelHeight", label: "Panel Height", type: "range", min: 0.7, max: 1.5, step: 0.01 },
+      { key: "panelDepth", label: "Panel Depth", type: "range", min: 0.7, max: 1.4, step: 0.01 },
+      { key: "eyeY", label: "Eye Y", type: "range", min: -0.7, max: 0.9, step: 0.01 },
+      { key: "eyeZ", label: "Eye Z", type: "range", min: -0.2, max: 0.2, step: 0.01 },
+      { key: "lensScale", label: "Lens Scale", type: "range", min: 0.6, max: 1.8, step: 0.01 },
+      { key: "irisScale", label: "Iris Scale", type: "range", min: 0.55, max: 1.9, step: 0.01 },
+      { key: "pupilScale", label: "Pupil Scale", type: "range", min: 0.45, max: 1.9, step: 0.01 },
+    ],
+  },
+  {
+    title: "Materials",
+    fields: [
+      { key: "panelColor", label: "Panel", type: "color" },
+      { key: "accentColor", label: "Accent", type: "color" },
+      { key: "bezelColor", label: "Bezel", type: "color" },
+      { key: "lensColor", label: "Lens", type: "color" },
+      { key: "irisColor", label: "Iris", type: "color" },
+      { key: "pupilColor", label: "Pupil", type: "color" },
+      { key: "glowColor", label: "Glow", type: "color" },
+      { key: "metalness", label: "Metalness", type: "range", min: 0, max: 1, step: 0.01 },
+      { key: "roughness", label: "Roughness", type: "range", min: 0, max: 1, step: 0.01 },
+      { key: "clearcoat", label: "Clearcoat", type: "range", min: 0, max: 1, step: 0.01 },
+      { key: "clearcoatRoughness", label: "Clearcoat Roughness", type: "range", min: 0, max: 1, step: 0.01 },
+      { key: "glowIntensity", label: "Glow Intensity", type: "range", min: 0, max: 1, step: 0.01 },
+    ],
+  },
+];
+
 export const AVATAR_DEFINITIONS = {
   clippy: {
     id: "clippy",
@@ -702,6 +781,57 @@ export const AVATAR_DEFINITIONS = {
       glowIntensity: 0.1,
     },
   },
+  hal9000: {
+    id: "hal9000",
+    label: "HAL9000",
+    description: "Monolithic AI eye panel with cinematic scan and pulse animations.",
+    characterProfile: {
+      background: "An iconic sentient computer core that now oversees the studio floor with relentless composure.",
+      personality: "Calm, analytical, and unnervingly confident. Speaks precisely and rarely raises its voice.",
+    },
+    engine: "hal9000",
+    order: 5,
+    stageTopY: -2.67,
+    scenePreset: "hal9000",
+    controls: hal9000Fields,
+    defaultState: {
+      mode: "idle",
+      expression: "neutral",
+      propName: NO_PROP_VALUE,
+      speed: 1,
+
+      propX: 0,
+      propY: 0.3,
+      propZ: 0,
+      propScale: 1,
+      propRotX: 0,
+      propRotY: 0,
+      propRotZ: 0,
+
+      scale: 0.72,
+      panelWidth: 1,
+      panelHeight: 1,
+      panelDepth: 1,
+      eyeY: 0.28,
+      eyeZ: 0,
+      lensScale: 1,
+      irisScale: 1,
+      pupilScale: 1,
+
+      panelColor: "#171b25",
+      accentColor: "#0d1017",
+      bezelColor: "#2d323d",
+      lensColor: "#9e120c",
+      irisColor: "#ff4a2c",
+      pupilColor: "#1a0201",
+      glowColor: "#ff4526",
+      metalness: 0.58,
+      roughness: 0.32,
+      clearcoat: 0.45,
+      clearcoatRoughness: 0.21,
+      glowIntensity: 0.68,
+    },
+  },
 };
 
 export const AVATAR_ORDER = Object.keys(AVATAR_DEFINITIONS)
@@ -735,5 +865,12 @@ export const SCENE_PRESETS = {
     fogFar: 21,
     camera: [0.24, 0.1, 6.5],
     orbitTarget: [0, -0.6, 0],
+  },
+  hal9000: {
+    fogColor: 0x140d10,
+    fogNear: 8.5,
+    fogFar: 21,
+    camera: [0.24, -0.18, 6.3],
+    orbitTarget: [0, -0.75, 0],
   },
 };

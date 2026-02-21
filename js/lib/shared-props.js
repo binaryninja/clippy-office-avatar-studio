@@ -28,6 +28,7 @@ registerSharedProp("sunglasses", {
     pushy: { x: 0, y: 0.06, z: 0.1, scale: 0.42, rotX: 0, rotY: 0, rotZ: 0 },
     tacky: { x: 0, y: 0.06, z: 0.1, scale: 0.42, rotX: 0, rotY: 0, rotZ: 0 },
     towely: { x: 0, y: 0.02, z: 0.24, scale: 1, rotX: 0, rotY: 0, rotZ: 0 },
+    hal9000: { x: 0, y: 0.02, z: 0.06, scale: 0.9, rotX: 0, rotY: 0, rotZ: 0 },
   },
   create({ THREE }) {
     const group = new THREE.Group();
@@ -105,6 +106,7 @@ registerSharedProp("topHat", {
     pushy: { x: 0, y: 0.28, z: 0.02, scale: 0.28, rotX: 0, rotY: 0, rotZ: 0 },
     tacky: { x: 0, y: 0.28, z: 0.02, scale: 0.28, rotX: 0, rotY: 0, rotZ: 0 },
     towely: { x: 0, y: 0.42, z: 0.08, scale: 0.52, rotX: 0, rotY: 0, rotZ: 0 },
+    hal9000: { x: 0, y: 0.3, z: 0.05, scale: 0.58, rotX: 0, rotY: 0, rotZ: 0 },
   },
   create({ THREE }) {
     const group = new THREE.Group();

@@ -94,6 +94,53 @@
             </div>
           </section>
 
+          <section class="control-group voice-credentials">
+            <h3 class="group-title">Voice Credentials</h3>
+            <p class="credential-note">Stored in this browser (localStorage).</p>
+            <div class="control profile-control">
+              <label class="control-label" for="openAiToken">OpenAI API Key</label>
+              <input
+                id="openAiToken"
+                class="credential-input"
+                type="password"
+                autocomplete="off"
+                placeholder="sk-..."
+              />
+            </div>
+            <div class="control profile-control">
+              <label class="control-label" for="elevenLabsAgentPreset">ElevenLabs Persona</label>
+              <select id="elevenLabsAgentPreset" class="credential-input">
+                <option value="">Custom (Manual ID)</option>
+                <option value="agent_6201kh80gehme6wacehwktq31hsk">Towelie</option>
+                <option value="agent_2601khypzbkje0hvtr252mmavwam">Hal9000</option>
+              </select>
+            </div>
+            <div class="control profile-control">
+              <label class="control-label" for="elevenLabsAgentId">ElevenLabs Agent ID</label>
+              <input
+                id="elevenLabsAgentId"
+                class="credential-input"
+                type="text"
+                autocomplete="off"
+                placeholder="agent_..."
+              />
+            </div>
+            <div class="control profile-control">
+              <label class="control-label" for="elevenLabsApiKey">ElevenLabs API Key</label>
+              <input
+                id="elevenLabsApiKey"
+                class="credential-input"
+                type="password"
+                autocomplete="off"
+                placeholder="sk_..."
+              />
+            </div>
+            <div class="profile-btn-grid">
+              <button type="button" id="btnSaveVoiceCredentials">Save Credentials</button>
+              <button type="button" id="btnClearVoiceCredentials">Clear Stored</button>
+            </div>
+          </section>
+
           <div id="controlSections"></div>
 
           <section class="control-group json-output">

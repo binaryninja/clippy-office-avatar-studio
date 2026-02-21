@@ -11,6 +11,7 @@ import "./avatars/clippy-controller.js";
 import "./avatars/thumbtack-controller.js";
 import "./avatars/towely-controller.js";
 import "./avatars/puffball-controller.js";
+import "./avatars/hal9000-controller.js";
 import { clamp, randomBetween, randomColor } from "./lib/utils.js";
 import { createRealtimeVoice } from "./lib/realtime-voice.js";
 import { createElevenLabsVoice } from "./lib/elevenlabs-voice.js";
@@ -35,6 +36,12 @@ const characterBackgroundEl = document.getElementById("characterBackground");
 const characterPersonalityEl = document.getElementById("characterPersonality");
 const btnSaveCharacter = document.getElementById("btnSaveCharacter");
 const btnResetCharacter = document.getElementById("btnResetCharacter");
+const openAiTokenEl = document.getElementById("openAiToken");
+const elevenLabsAgentPresetEl = document.getElementById("elevenLabsAgentPreset");
+const elevenLabsAgentIdEl = document.getElementById("elevenLabsAgentId");
+const elevenLabsApiKeyEl = document.getElementById("elevenLabsApiKey");
+const btnSaveVoiceCredentials = document.getElementById("btnSaveVoiceCredentials");
+const btnClearVoiceCredentials = document.getElementById("btnClearVoiceCredentials");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -66,6 +73,17 @@ scene.add(lights.hemi, lights.ambient, lights.key, lights.fill, lights.rim);
 
 const CHARACTER_PROFILE_STORAGE_KEY = "office-avatar-studio:character-profiles:v1";
 const CHARACTER_PROFILE_MAX_LENGTH = 420;
+const VOICE_CREDENTIALS_STORAGE_KEY = "office-avatar-studio:voice-credentials:v1";
+const ELEVENLABS_AGENT_PRESETS = Object.freeze([
+  {
+    label: "Towelie",
+    agentId: "agent_6201kh80gehme6wacehwktq31hsk",
+  },
+  {
+    label: "Hal9000",
+    agentId: "agent_2601khypzbkje0hvtr252mmavwam",
+  },
+]);
 
 function sanitizeProfileText(value, maxLength = CHARACTER_PROFILE_MAX_LENGTH) {
   return String(value || "").trim().slice(0, maxLength);
@@ -108,6 +126,69 @@ function persistCharacterProfiles(profileStore) {
     return true;
   } catch (error) {
     console.warn("Failed to save character profiles", error);
+    return false;
+  }
+}
+
+function sanitizeVoiceToken(value) {
+  return String(value || "").trim();
+}
+
+function sanitizeVoiceAgentId(value) {
+  return String(value || "").trim();
+}
+
+function sanitizeVoiceApiKey(value) {
+  return String(value || "").trim();
+}
+
+function resolveKnownElevenLabsAgentId(value) {
+  const normalized = sanitizeVoiceAgentId(value);
+  if (!normalized) return "";
+  const preset = ELEVENLABS_AGENT_PRESETS.find((entry) => entry.agentId === normalized);
+  return preset ? preset.agentId : "";
+}
+
+function loadVoiceCredentials() {
+  try {
+    const raw = localStorage.getItem(VOICE_CREDENTIALS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return {
+      openAiToken: sanitizeVoiceToken(parsed.openAiToken),
+      elevenLabsAgentId: sanitizeVoiceAgentId(parsed.elevenLabsAgentId),
+      elevenLabsApiKey: sanitizeVoiceApiKey(parsed.elevenLabsApiKey),
+    };
+  } catch (error) {
+    console.warn("Failed to load voice credentials", error);
+    return {};
+  }
+}
+
+function persistVoiceCredentials(credentials) {
+  try {
+    localStorage.setItem(
+      VOICE_CREDENTIALS_STORAGE_KEY,
+      JSON.stringify({
+        openAiToken: sanitizeVoiceToken(credentials?.openAiToken),
+        elevenLabsAgentId: sanitizeVoiceAgentId(credentials?.elevenLabsAgentId),
+        elevenLabsApiKey: sanitizeVoiceApiKey(credentials?.elevenLabsApiKey),
+      }),
+    );
+    return true;
+  } catch (error) {
+    console.warn("Failed to save voice credentials", error);
+    return false;
+  }
+}
+
+function clearPersistedVoiceCredentials() {
+  try {
+    localStorage.removeItem(VOICE_CREDENTIALS_STORAGE_KEY);
+    return true;
+  } catch (error) {
+    console.warn("Failed to clear voice credentials", error);
     return false;
   }
 }
@@ -290,6 +371,31 @@ let devVowelDemoRunId = 0;
 
 const controlRegistry = new Map();
 const characterProfiles = loadCharacterProfiles();
+const storedVoiceCredentials = loadVoiceCredentials();
+const hasStoredOpenAiToken = Object.hasOwn(storedVoiceCredentials, "openAiToken");
+const hasStoredElevenLabsAgentId = Object.hasOwn(storedVoiceCredentials, "elevenLabsAgentId");
+const hasStoredElevenLabsApiKey = Object.hasOwn(storedVoiceCredentials, "elevenLabsApiKey");
+const DEFAULT_OPENAI_API_KEY =
+  String(window.OPENAI_API_KEY || "").trim()
+  || String(import.meta.env.VITE_OPENAI_API_KEY || "").trim();
+const DEFAULT_ELEVENLABS_AGENT_ID =
+  String(window.ELEVENLABS_AGENT_ID || "").trim()
+  || String(import.meta.env.VITE_ELEVENLABS_AGENT_ID || "").trim()
+  || "agent_6201kh80gehme6wacehwktq31hsk";
+const DEFAULT_ELEVENLABS_API_KEY =
+  String(window.ELEVENLABS_API_KEY || "").trim()
+  || String(import.meta.env.VITE_ELEVENLABS_API_KEY || "").trim();
+const voiceCredentials = {
+  openAiToken: hasStoredOpenAiToken
+    ? sanitizeVoiceToken(storedVoiceCredentials.openAiToken)
+    : DEFAULT_OPENAI_API_KEY,
+  elevenLabsAgentId: hasStoredElevenLabsAgentId
+    ? sanitizeVoiceAgentId(storedVoiceCredentials.elevenLabsAgentId)
+    : DEFAULT_ELEVENLABS_AGENT_ID,
+  elevenLabsApiKey: hasStoredElevenLabsApiKey
+    ? sanitizeVoiceApiKey(storedVoiceCredentials.elevenLabsApiKey)
+    : DEFAULT_ELEVENLABS_API_KEY,
+};
 let profileAutosaveTimer = null;
 let wsTransientTimer = null;
 let wsSustainedMode = "idle";
@@ -490,6 +596,62 @@ function queueCharacterProfileAutosave() {
   }, 500);
 }
 
+function syncElevenLabsAgentPresetInput(agentId = voiceCredentials.elevenLabsAgentId) {
+  if (!elevenLabsAgentPresetEl) return;
+  elevenLabsAgentPresetEl.value = resolveKnownElevenLabsAgentId(agentId);
+}
+
+function syncVoiceCredentialInputs() {
+  if (openAiTokenEl) {
+    openAiTokenEl.value = voiceCredentials.openAiToken;
+  }
+  syncElevenLabsAgentPresetInput();
+  if (elevenLabsAgentIdEl) {
+    elevenLabsAgentIdEl.value = voiceCredentials.elevenLabsAgentId;
+  }
+  if (elevenLabsApiKeyEl) {
+    elevenLabsApiKeyEl.value = voiceCredentials.elevenLabsApiKey;
+  }
+}
+
+function captureVoiceCredentialsFromInputs() {
+  return {
+    openAiToken: sanitizeVoiceToken(openAiTokenEl?.value),
+    elevenLabsAgentId: sanitizeVoiceAgentId(elevenLabsAgentIdEl?.value),
+    elevenLabsApiKey: sanitizeVoiceApiKey(elevenLabsApiKeyEl?.value),
+  };
+}
+
+function applyVoiceCredentialsToProviders() {
+  realtimeVoice.setApiKey(voiceCredentials.openAiToken);
+  elevenLabsVoice.setAgentId(voiceCredentials.elevenLabsAgentId);
+  elevenLabsVoice.setApiKey(voiceCredentials.elevenLabsApiKey);
+}
+
+function saveVoiceCredentials({ announce = true } = {}) {
+  const next = captureVoiceCredentialsFromInputs();
+  voiceCredentials.openAiToken = next.openAiToken;
+  voiceCredentials.elevenLabsAgentId = next.elevenLabsAgentId;
+  voiceCredentials.elevenLabsApiKey = next.elevenLabsApiKey;
+  applyVoiceCredentialsToProviders();
+  const saved = persistVoiceCredentials(voiceCredentials);
+  if (announce) {
+    setStatus(saved ? "Voice credentials saved" : "Could not save credentials", saved ? 1800 : 2400);
+  }
+}
+
+function clearStoredVoiceCredentials({ announce = true } = {}) {
+  const cleared = clearPersistedVoiceCredentials();
+  voiceCredentials.openAiToken = DEFAULT_OPENAI_API_KEY;
+  voiceCredentials.elevenLabsAgentId = DEFAULT_ELEVENLABS_AGENT_ID;
+  voiceCredentials.elevenLabsApiKey = DEFAULT_ELEVENLABS_API_KEY;
+  syncVoiceCredentialInputs();
+  applyVoiceCredentialsToProviders();
+  if (announce) {
+    setStatus(cleared ? "Stored credentials cleared" : "Could not clear credentials", cleared ? 1800 : 2400);
+  }
+}
+
 function buildVoiceSessionInstructions() {
   const runtime = getAvatarRuntime();
   const profile = getActiveCharacterProfile();
@@ -545,24 +707,15 @@ function handleVoiceConnectionChange(provider, connected) {
   }
 }
 
-const elevenLabsAgentId =
-  String(window.ELEVENLABS_AGENT_ID || "").trim()
-  || String(import.meta.env.VITE_ELEVENLABS_AGENT_ID || "").trim()
-  || "agent_6201kh80gehme6wacehwktq31hsk";
-
 const rawElevenLabsConnectionType =
   String(window.ELEVENLABS_CONNECTION_TYPE || "").trim()
   || String(import.meta.env.VITE_ELEVENLABS_CONNECTION_TYPE || "").trim()
   || "webrtc";
 const elevenLabsConnectionType = rawElevenLabsConnectionType.toLowerCase() === "websocket" ? "websocket" : "webrtc";
 
-const elevenLabsVoiceId =
-  String(window.ELEVENLABS_VOICE_ID || "").trim()
-  || String(import.meta.env.VITE_ELEVENLABS_VOICE_ID || "").trim()
-  || "fBD19tfE58bkETeiwUoC";
-
 const realtimeVoice = createRealtimeVoice({
   buttonEl: btnVoice,
+  apiKey: voiceCredentials.openAiToken,
   onStatus: setStatus,
   onConnectionStateChange: ({ connected }) => {
     handleVoiceConnectionChange("openai", connected);
@@ -584,8 +737,8 @@ const realtimeVoice = createRealtimeVoice({
 
 const elevenLabsVoice = createElevenLabsVoice({
   buttonEl: btnElevenVoice,
-  agentId: elevenLabsAgentId,
-  voiceId: elevenLabsVoiceId,
+  agentId: voiceCredentials.elevenLabsAgentId,
+  apiKey: voiceCredentials.elevenLabsApiKey,
   connectionType: elevenLabsConnectionType,
   onStatus: setStatus,
   onConnectionStateChange: ({ connected }) => {
@@ -640,6 +793,26 @@ async function runDevVowelDemo() {
   }
 }
 
+function resolveWsMode(mapping, runtime) {
+  const requested = String(mapping?.mode || "").trim();
+  if (!requested) return "";
+
+  const availableModes = Array.isArray(runtime?.catalog?.modes)
+    ? runtime.catalog.modes
+    : [];
+  if (!availableModes.length) return requested;
+  if (availableModes.includes(requested)) return requested;
+
+  const fallback = String(mapping?.fallbackMode || "").trim();
+  if (fallback && availableModes.includes(fallback)) return fallback;
+
+  if (availableModes.includes(runtime?.state?.mode)) {
+    return runtime.state.mode;
+  }
+
+  return availableModes[0] || requested;
+}
+
 function handleWsEvent(event) {
   handleWsThoughtEvent(event);
 
@@ -648,6 +821,8 @@ function handleWsEvent(event) {
 
   const runtime = getAvatarRuntime();
   if (!runtime) return;
+  const nextMode = resolveWsMode(mapping, runtime);
+  if (!nextMode) return;
 
   // Clear any pending transient revert
   if (wsTransientTimer) {
@@ -657,21 +832,36 @@ function handleWsEvent(event) {
 
   if (mapping.transient) {
     // Transient mode: apply, then revert to previous sustained mode
-    runtime.state.mode = mapping.mode;
+    runtime.state.mode = nextMode;
     applyStateToController();
+
+    let revertMode = wsSustainedMode;
+    if (mapping.sustainedMode) {
+      const resolvedSustainedMode = resolveWsMode(
+        {
+          mode: mapping.sustainedMode,
+          fallbackMode: mapping.sustainedFallbackMode,
+        },
+        runtime,
+      );
+      if (resolvedSustainedMode) {
+        wsSustainedMode = resolvedSustainedMode;
+        revertMode = resolvedSustainedMode;
+      }
+    }
 
     wsTransientTimer = setTimeout(() => {
       wsTransientTimer = null;
       const rt = getAvatarRuntime();
       if (rt) {
-        rt.state.mode = wsSustainedMode;
+        rt.state.mode = revertMode;
         applyStateToController();
       }
     }, mapping.durationMs || 1000);
   } else {
     // Sustained mode: update both current and sustained tracking
-    wsSustainedMode = mapping.mode;
-    runtime.state.mode = mapping.mode;
+    wsSustainedMode = nextMode;
+    runtime.state.mode = nextMode;
     applyStateToController();
   }
 }
@@ -1074,6 +1264,36 @@ function installGlobalHandlers() {
   characterBackgroundEl?.addEventListener("input", profileInputHandler);
   characterPersonalityEl?.addEventListener("input", profileInputHandler);
 
+  const voiceCredentialInputHandler = () => {
+    const next = captureVoiceCredentialsFromInputs();
+    voiceCredentials.openAiToken = next.openAiToken;
+    voiceCredentials.elevenLabsAgentId = next.elevenLabsAgentId;
+    voiceCredentials.elevenLabsApiKey = next.elevenLabsApiKey;
+    applyVoiceCredentialsToProviders();
+  };
+
+  openAiTokenEl?.addEventListener("input", voiceCredentialInputHandler);
+  elevenLabsApiKeyEl?.addEventListener("input", voiceCredentialInputHandler);
+  elevenLabsAgentIdEl?.addEventListener("input", () => {
+    syncElevenLabsAgentPresetInput(elevenLabsAgentIdEl.value);
+    voiceCredentialInputHandler();
+  });
+  elevenLabsAgentPresetEl?.addEventListener("change", () => {
+    const presetAgentId = resolveKnownElevenLabsAgentId(elevenLabsAgentPresetEl.value);
+    if (presetAgentId && elevenLabsAgentIdEl) {
+      elevenLabsAgentIdEl.value = presetAgentId;
+    }
+    voiceCredentialInputHandler();
+  });
+
+  btnSaveVoiceCredentials?.addEventListener("click", () => {
+    saveVoiceCredentials();
+  });
+
+  btnClearVoiceCredentials?.addEventListener("click", () => {
+    clearStoredVoiceCredentials();
+  });
+
   btnReset.addEventListener("click", () => {
     const runtime = getAvatarRuntime();
     if (!runtime) return;
@@ -1209,6 +1429,8 @@ function initWsPreview() {
 
 function init() {
   populateAvatarSelect();
+  syncVoiceCredentialInputs();
+  applyVoiceCredentialsToProviders();
   realtimeVoice.init();
   elevenLabsVoice.init();
   installGlobalHandlers();

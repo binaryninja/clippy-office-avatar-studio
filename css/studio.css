@@ -310,12 +310,26 @@ body::after {
     var(--surface);
 }
 
+.voice-credentials {
+  background:
+    linear-gradient(170deg, rgba(14, 26, 52, 0.88), rgba(7, 18, 37, 0.88)),
+    var(--surface);
+}
+
+.credential-note {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .profile-control {
   margin-bottom: 10px;
 }
 
 .profile-textarea,
-#characterName {
+#characterName,
+.credential-input {
   width: 100%;
   padding: 8px 10px;
   background: rgba(4, 17, 34, 0.95);
@@ -371,6 +385,8 @@ textarea {
 
 select,
 input[type="color"],
+input[type="text"],
+input[type="password"],
 textarea,
 button {
   border-radius: 10px;
@@ -381,6 +397,8 @@ button {
 
 select,
 input[type="color"],
+input[type="text"],
+input[type="password"],
 button {
   height: 34px;
   padding: 0 10px;

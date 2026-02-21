@@ -39,6 +39,7 @@ export function createRealtimeVoice({
   model = DEFAULT_MODEL,
   voice = DEFAULT_VOICE,
   voiceSpeed = DEFAULT_VOICE_SPEED,
+  apiKey = "",
   onStatus = () => {},
   onAssistantSpeechLevel = () => {},
   onAssistantViseme = () => {},
@@ -74,6 +75,7 @@ export function createRealtimeVoice({
     lastVisemeSentStrength: 0,
     connectedNotified: false,
   };
+  let runtimeApiKey = String(apiKey || "").trim();
 
   function isConnected() {
     return Boolean(state.pc);
@@ -435,13 +437,20 @@ export function createRealtimeVoice({
       || String(import.meta.env.VITE_OPENAI_REALTIME_CLIENT_SECRET || "").trim();
     if (publicClientSecret) return publicClientSecret;
 
-    let apiKey = String(window.OPENAI_API_KEY || "").trim() || String(import.meta.env.VITE_OPENAI_API_KEY || "").trim();
-    if (!apiKey) {
-      apiKey = String(window.prompt("Enter OpenAI API key for realtime voice (used once, not saved):", "") || "").trim();
+    let resolvedApiKey =
+      runtimeApiKey
+      || String(window.OPENAI_API_KEY || "").trim()
+      || String(import.meta.env.VITE_OPENAI_API_KEY || "").trim();
+    if (!resolvedApiKey) {
+      resolvedApiKey = String(window.prompt("Enter OpenAI API key for realtime voice (used once, not saved):", "") || "").trim();
     }
 
-    if (!apiKey) throw new Error("OpenAI API key is required.");
-    return createClientSecretFromApiKey(apiKey);
+    if (!resolvedApiKey) throw new Error("OpenAI API key is required.");
+    return createClientSecretFromApiKey(resolvedApiKey);
+  }
+
+  function setApiKey(nextApiKey) {
+    runtimeApiKey = String(nextApiKey || "").trim();
   }
 
   function collectTranscriptChunks(evt, lowerType) {
@@ -784,5 +793,6 @@ export function createRealtimeVoice({
     disconnect,
     isConnected,
     syncSessionContext,
+    setApiKey,
   };
 }

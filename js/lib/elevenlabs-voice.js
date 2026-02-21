@@ -20,14 +20,32 @@ function formatDisconnectDetails(details) {
   const closeCode = Number(details.closeCode);
   const closeReason = String(details.closeReason || "").trim();
   const message = String(details.message || "").trim();
+  const contextType = String(details.context?.type || "").trim();
+  const contextReason = String(details.context?.reason || "").trim();
 
   const parts = [];
   if (reason) parts.push(`reason=${reason}`);
   if (Number.isFinite(closeCode)) parts.push(`code=${closeCode}`);
   if (closeReason) parts.push(`close=${closeReason}`);
   if (message) parts.push(`message=${message}`);
+  if (contextType) parts.push(`event=${contextType}`);
+  if (contextReason) parts.push(`eventReason=${contextReason}`);
 
   return parts.join(", ");
+}
+
+function isLiveKitConnectionDrop(details) {
+  if (!details || typeof details !== "object") return false;
+  const reason = String(details.reason || "").trim().toLowerCase();
+  const message = String(details.message || "").trim().toLowerCase();
+  const contextType = String(details.context?.type || "").trim().toLowerCase();
+  return (
+    reason === "error"
+    && (
+      message.includes("livekit connection state changed to disconnected")
+      || contextType === "connection_state_changed"
+    )
+  );
 }
 
 function formatErrorContext(context) {
@@ -55,6 +73,28 @@ function isTokenAuthorizationError(error) {
   );
 }
 
+function isAuthenticationRequiredError(error) {
+  const message = normalizeError(error).toLowerCase();
+  return (
+    message.includes("authentication enabled")
+    || message.includes("signed url")
+    || message.includes("conversation token")
+    || message.includes("authorization required")
+  );
+}
+
+function isAgentNotFoundError(error) {
+  const message = normalizeError(error).toLowerCase();
+  return (
+    message.includes("agent")
+    && (
+      message.includes("not found")
+      || message.includes("does not exist")
+      || message.includes("doesn't exist")
+    )
+  );
+}
+
 function isVoiceOverrideError(error, context = null) {
   const message = normalizeError(error).toLowerCase();
   const contextText = formatErrorContext(context).toLowerCase();
@@ -64,6 +104,19 @@ function isVoiceOverrideError(error, context = null) {
     || contextText.includes("voice")
     || contextText.includes("override")
   );
+}
+
+function isVoiceOverrideRejectedDisconnect(details) {
+  if (!details || typeof details !== "object") return false;
+  const text = [
+    details.reason,
+    details.closeReason,
+    details.message,
+    details.context?.reason,
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+  return text.includes("voice_id") && text.includes("not allowed");
 }
 
 function averageRange(buffer, start, end) {
@@ -105,6 +158,7 @@ function extractConversationToken(payload) {
 export function createElevenLabsVoice({
   buttonEl,
   agentId = DEFAULT_AGENT_ID,
+  apiKey = "",
   voiceId = "",
   connectionType = DEFAULT_CONNECTION_TYPE,
   onStatus = () => {},
@@ -131,7 +185,13 @@ export function createElevenLabsVoice({
     lastVisemeSentKey: VISEME_SIL,
     lastVisemeSentStrength: 0,
     lastContextSyncText: "",
+    livekitReconnectAttempted: false,
+    voiceOverrideBlocked: false,
+    voiceOverrideRetryAttempted: false,
   };
+  let runtimeAgentId = String(agentId || "").trim() || DEFAULT_AGENT_ID;
+  let runtimeApiKey = String(apiKey || "").trim();
+  let transientApiKey = "";
 
   function isConnected() {
     if (!state.conversation) return false;
@@ -405,8 +465,8 @@ export function createElevenLabsVoice({
 
   async function fetchLocalConversationToken() {
     const body = JSON.stringify({
-      agent_id: agentId,
-      agentId,
+      agent_id: runtimeAgentId,
+      agentId: runtimeAgentId,
       connection_type: connectionType,
       connectionType,
     });
@@ -418,7 +478,7 @@ export function createElevenLabsVoice({
           headers: { "Content-Type": "application/json" },
           body,
         }),
-      () => fetchTokenFromLocalEndpoint(`/api/elevenlabs/conversation/token?agent_id=${encodeURIComponent(agentId)}`),
+      () => fetchTokenFromLocalEndpoint(`/api/elevenlabs/conversation/token?agent_id=${encodeURIComponent(runtimeAgentId)}`),
       () =>
         fetchTokenFromLocalEndpoint("/api/elevenlabs/conversation/token", {
           method: "POST",
@@ -436,7 +496,7 @@ export function createElevenLabsVoice({
   }
 
   async function createConversationTokenFromApiKey(apiKey) {
-    const encodedAgentId = encodeURIComponent(agentId);
+    const encodedAgentId = encodeURIComponent(runtimeAgentId);
     const res = await fetch(`https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${encodedAgentId}`, {
       headers: {
         "xi-api-key": apiKey,
@@ -451,22 +511,46 @@ export function createElevenLabsVoice({
     return token;
   }
 
-  async function getConversationToken() {
-    const localToken = await fetchLocalConversationToken();
-    if (localToken) return localToken;
-
-    const publicToken =
+  function readConfiguredConversationToken() {
+    return (
       String(window.ELEVENLABS_CONVERSATION_TOKEN || "").trim()
-      || String(import.meta.env.VITE_ELEVENLABS_CONVERSATION_TOKEN || "").trim();
-    if (publicToken) return publicToken;
+      || String(import.meta.env.VITE_ELEVENLABS_CONVERSATION_TOKEN || "").trim()
+    );
+  }
 
-    let apiKey = String(window.ELEVENLABS_API_KEY || "").trim() || String(import.meta.env.VITE_ELEVENLABS_API_KEY || "").trim();
-    if (!apiKey) {
+  function readConfiguredApiKey() {
+    return (
+      String(window.ELEVENLABS_API_KEY || "").trim()
+      || String(import.meta.env.VITE_ELEVENLABS_API_KEY || "").trim()
+      || runtimeApiKey
+      || transientApiKey
+    );
+  }
+
+  async function getConversationToken({
+    allowPrompt = true,
+    skipLocalToken = false,
+    skipStaticToken = false,
+  } = {}) {
+    if (!skipLocalToken) {
+      const localToken = await fetchLocalConversationToken();
+      if (localToken) return localToken;
+    }
+
+    if (!skipStaticToken) {
+      const staticToken = readConfiguredConversationToken();
+      if (staticToken) return staticToken;
+    }
+
+    let apiKey = readConfiguredApiKey();
+    if (!apiKey && allowPrompt) {
       apiKey = String(window.prompt("Enter ElevenLabs API key for a conversation token (used once, not saved):", "") || "").trim();
     }
 
     apiKey = String(apiKey || "").trim();
     if (!apiKey) return "";
+    runtimeApiKey = apiKey;
+    transientApiKey = apiKey;
     return createConversationTokenFromApiKey(apiKey);
   }
 
@@ -497,8 +581,17 @@ export function createElevenLabsVoice({
     }
   }
 
-  async function connect() {
+  async function connect({
+    retryingLiveKit = false,
+    retryingVoiceOverride = false,
+  } = {}) {
     if (state.connecting || isConnected()) return;
+    if (!retryingLiveKit) {
+      state.livekitReconnectAttempted = false;
+    }
+    if (!retryingVoiceOverride) {
+      state.voiceOverrideRetryAttempted = false;
+    }
 
     const isLocalhost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
     if (!window.isSecureContext && !isLocalhost) {
@@ -520,7 +613,6 @@ export function createElevenLabsVoice({
     updateButton();
 
     try {
-      const token = await getConversationToken();
       const normalizedVoiceId = String(voiceId || "").trim();
       let lastServerError = { message: "", context: null };
       const baseOptions = {
@@ -532,9 +624,41 @@ export function createElevenLabsVoice({
         onDisconnect: (details) => {
           if (!state.conversation) return;
           const detailText = formatDisconnectDetails(details);
+          const shouldRetryLiveKit = (
+            connectionType === "webrtc"
+            && !state.livekitReconnectAttempted
+            && isLiveKitConnectionDrop(details)
+          );
+          if (shouldRetryLiveKit) {
+            state.livekitReconnectAttempted = true;
+            teardownSession({ silent: true });
+            onStatus("ElevenLabs transport dropped (LiveKit). Retrying once...", 4200);
+            void connect({ retryingLiveKit: true });
+            return;
+          }
+          const shouldRetryWithoutVoiceOverride = (
+            !state.voiceOverrideBlocked
+            && !state.voiceOverrideRetryAttempted
+            && isVoiceOverrideRejectedDisconnect(details)
+          );
+          if (shouldRetryWithoutVoiceOverride) {
+            state.voiceOverrideBlocked = true;
+            state.voiceOverrideRetryAttempted = true;
+            teardownSession({ silent: true });
+            onStatus("ElevenLabs rejected voice override. Reconnecting with agent default voice...", 5600);
+            void connect({ retryingVoiceOverride: true });
+            return;
+          }
+          const isLiveKitDrop = isLiveKitConnectionDrop(details);
           teardownSession({
             silent: false,
-            statusMessage: detailText ? `ElevenLabs disconnected (${detailText}).` : "ElevenLabs voice disconnected.",
+            statusMessage: isLiveKitDrop
+              ? (
+                detailText
+                  ? `ElevenLabs disconnected (${detailText}). WebRTC transport dropped; try ELEVENLABS_CONNECTION_TYPE=websocket.`
+                  : "ElevenLabs voice disconnected. WebRTC transport dropped; try ELEVENLABS_CONNECTION_TYPE=websocket."
+              )
+              : (detailText ? `ElevenLabs disconnected (${detailText}).` : "ElevenLabs voice disconnected."),
           });
         },
         onError: (message, context) => {
@@ -566,7 +690,8 @@ export function createElevenLabsVoice({
         },
       };
 
-      const withVoiceOverride = normalizedVoiceId
+      const canUseVoiceOverride = Boolean(normalizedVoiceId) && !state.voiceOverrideBlocked;
+      const withVoiceOverride = canUseVoiceOverride
         ? {
           ...baseOptions,
           overrides: {
@@ -580,45 +705,75 @@ export function createElevenLabsVoice({
         : baseOptions;
       const withoutVoiceOverride = baseOptions;
 
-      let usedAgentFallback = false;
-      let usedVoiceFallback = false;
-      if (token) {
+      async function startSessionWithVoiceFallback(sessionConfig) {
         try {
-          state.conversation = await Conversation.startSession({
-            ...withVoiceOverride,
+          return {
+            conversation: await Conversation.startSession({
+              ...withVoiceOverride,
+              ...sessionConfig,
+            }),
+            usedVoiceFallback: false,
+          };
+        } catch (error) {
+          if (!(canUseVoiceOverride && isVoiceOverrideError(error, lastServerError.context))) throw error;
+          state.voiceOverrideBlocked = true;
+          return {
+            conversation: await Conversation.startSession({
+              ...withoutVoiceOverride,
+              ...sessionConfig,
+            }),
+            usedVoiceFallback: true,
+          };
+        }
+      }
+
+      let usedVoiceFallback = false;
+      let usedTokenAuth = false;
+      let usedFreshToken = false;
+      try {
+        const agentSession = await startSessionWithVoiceFallback({
+          agentId: runtimeAgentId,
+        });
+        state.conversation = agentSession.conversation;
+        usedVoiceFallback = agentSession.usedVoiceFallback;
+      } catch (agentError) {
+        const requiresAuth = isTokenAuthorizationError(agentError) || isAuthenticationRequiredError(agentError);
+        if (!requiresAuth) throw agentError;
+
+        usedTokenAuth = true;
+        let token = await getConversationToken({
+          allowPrompt: true,
+          skipLocalToken: false,
+          skipStaticToken: false,
+        });
+        if (!token) {
+          throw new Error("ElevenLabs agent requires authentication. Provide a conversation token or API key.");
+        }
+
+        try {
+          const tokenSession = await startSessionWithVoiceFallback({
             conversationToken: token,
           });
+          state.conversation = tokenSession.conversation;
+          usedVoiceFallback = tokenSession.usedVoiceFallback;
         } catch (tokenError) {
           if (!isTokenAuthorizationError(tokenError)) throw tokenError;
 
-          usedAgentFallback = true;
-          try {
-            state.conversation = await Conversation.startSession({
-              ...withVoiceOverride,
-              agentId,
-            });
-          } catch (agentError) {
-            if (!(normalizedVoiceId && isVoiceOverrideError(agentError, lastServerError.context))) throw agentError;
-            usedVoiceFallback = true;
-            state.conversation = await Conversation.startSession({
-              ...withoutVoiceOverride,
-              agentId,
-            });
+          token = await getConversationToken({
+            allowPrompt: true,
+            skipLocalToken: true,
+            skipStaticToken: true,
+          });
+          if (!token) {
+            throw new Error("ElevenLabs token rejected. Use a fresh token or provide a valid API key.");
           }
-        }
-      } else {
-        try {
-          state.conversation = await Conversation.startSession({
-            ...withVoiceOverride,
-            agentId,
+
+          usedFreshToken = true;
+          const refreshedTokenSession = await startSessionWithVoiceFallback({
+            conversationToken: token,
           });
-        } catch (agentError) {
-          if (!(normalizedVoiceId && isVoiceOverrideError(agentError, lastServerError.context))) throw agentError;
-          usedVoiceFallback = true;
-          state.conversation = await Conversation.startSession({
-            ...withoutVoiceOverride,
-            agentId,
-          });
+          state.conversation = refreshedTokenSession.conversation;
+          usedVoiceFallback = refreshedTokenSession.usedVoiceFallback;
         }
       }
 
@@ -627,11 +782,21 @@ export function createElevenLabsVoice({
       syncSessionContext();
       startActivityLoop();
 
-      if (usedAgentFallback) {
+      if (usedTokenAuth) {
         if (usedVoiceFallback) {
-          onStatus("ElevenLabs connected via agentId; token was invalid and voice override was rejected.", 5600);
+          onStatus(
+            usedFreshToken
+              ? "ElevenLabs connected using refreshed token auth and agent default voice."
+              : "ElevenLabs connected using token auth and agent default voice.",
+            5600,
+          );
         } else {
-          onStatus("ElevenLabs connected via agentId (token was invalid/stale).", 3600);
+          onStatus(
+            usedFreshToken
+              ? "ElevenLabs connected using refreshed token auth. Start talking."
+              : "ElevenLabs connected using token auth. Start talking.",
+            3600,
+          );
         }
       } else if (usedVoiceFallback) {
         onStatus("ElevenLabs connected using agent default voice (override was rejected).", 5200);
@@ -641,7 +806,17 @@ export function createElevenLabsVoice({
     } catch (error) {
       teardownSession({ silent: true });
       if (isTokenAuthorizationError(error)) {
-        onStatus("ElevenLabs token rejected. Use a fresh token or remove static token env vars.", 6200);
+        onStatus(
+          "ElevenLabs token rejected. If this is a public agent, clear ElevenLabs API key and reconnect.",
+          7000,
+        );
+      } else if (isAgentNotFoundError(error)) {
+        onStatus(
+          "ElevenLabs reports agent not found. Verify exact agent ID; for public agents, connect without token/API key.",
+          7000,
+        );
+      } else if (isAuthenticationRequiredError(error)) {
+        onStatus("ElevenLabs agent requires auth. Provide a valid conversation token or ElevenLabs API key.", 6200);
       } else {
         onStatus(`ElevenLabs connect failed: ${normalizeError(error)}`, 5200);
       }
@@ -663,6 +838,20 @@ export function createElevenLabsVoice({
     if (conversation) {
       conversation.endSession().catch(() => {});
     }
+  }
+
+  function setAgentId(nextAgentId) {
+    const next = String(nextAgentId || "").trim() || DEFAULT_AGENT_ID;
+    if (next !== runtimeAgentId) {
+      state.voiceOverrideBlocked = false;
+      state.voiceOverrideRetryAttempted = false;
+    }
+    runtimeAgentId = next;
+  }
+
+  function setApiKey(nextApiKey) {
+    runtimeApiKey = String(nextApiKey || "").trim();
+    transientApiKey = runtimeApiKey;
   }
 
   function init() {
@@ -693,5 +882,7 @@ export function createElevenLabsVoice({
     disconnect,
     isConnected,
     syncSessionContext,
+    setAgentId,
+    setApiKey,
   };
 }

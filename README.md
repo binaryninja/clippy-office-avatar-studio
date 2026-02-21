@@ -52,9 +52,9 @@ Use the voice buttons in the panel header:
 ### ElevenLabs agent
 
 - Default agent id is `agent_6201kh80gehme6wacehwktq31hsk` (Towelie).
+- Built-in persona presets in the UI: `Towelie` (`agent_6201kh80gehme6wacehwktq31hsk`) and `Hal9000` (`agent_2601khypzbkje0hvtr252mmavwam`).
 - Optional agent override globals/env: `window.ELEVENLABS_AGENT_ID` or `VITE_ELEVENLABS_AGENT_ID`.
-- Default ElevenLabs voice id is `fBD19tfE58bkETeiwUoC`.
-- Optional voice override globals/env: `window.ELEVENLABS_VOICE_ID` or `VITE_ELEVENLABS_VOICE_ID`.
+- Voice overrides are disabled in the studio UI to avoid agent config conflicts (`voice_id` override rejection).
 - Optional connection type override (`webrtc` or `websocket`): `window.ELEVENLABS_CONNECTION_TYPE` or `VITE_ELEVENLABS_CONNECTION_TYPE`.
 - Preferred auth: provide `POST /api/elevenlabs/conversation_token` returning a conversation token.
 - Optional fallbacks:

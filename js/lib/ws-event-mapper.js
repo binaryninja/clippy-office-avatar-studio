@@ -6,7 +6,7 @@
 const TOOL_CATEGORY_MAP = {
   terminal: "typing",
   bash: "typing",
-  file: "reading",
+  file: "file",
   read: "reading",
   write: "typing",
   edit: "typing",
@@ -39,7 +39,7 @@ function classifyTool(toolName) {
  * and synthetic preview events (with category, tool).
  *
  * @param {object} event - WS bridge event with at minimum a `type` field
- * @returns {{ mode: string, expression?: string, transient?: boolean, durationMs?: number } | null}
+ * @returns {{ mode: string, fallbackMode?: string, sustainedMode?: string, sustainedFallbackMode?: string, expression?: string, transient?: boolean, durationMs?: number } | null}
  */
 export function mapWsEventToAnimation(event) {
   if (!event || !event.type) return null;
@@ -67,14 +67,17 @@ export function mapWsEventToAnimation(event) {
     case "agent.tool_use_start": {
       // Real bridge sends tool_category + tool_name; preview sends category + tool
       const category = event.tool_category || event.category || classifyTool(event.tool_name || event.tool);
+      if (category === "file") {
+        return { mode: "file", fallbackMode: "reading" };
+      }
       return { mode: category };
     }
 
     case "agent.tool_use_end":
-      return { mode: "success", transient: true, durationMs: 1000 };
+      return { mode: "success", transient: true, durationMs: 1000, sustainedMode: "thinking" };
 
     case "agent.tool_use_error":
-      return { mode: "error", transient: true, durationMs: 1500 };
+      return { mode: "error", transient: true, durationMs: 1500, sustainedMode: "thinking" };
 
     case "agent.subagent_start":
     case "agent.subagent_stop":

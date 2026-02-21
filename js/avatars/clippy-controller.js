@@ -9,7 +9,7 @@ import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 import "../lib/shared-props.js";
 import { NO_PROP_VALUE } from "../config/avatars.js";
 
-const FALLBACK_MODES = ["idle", "wave", "celebrate", "spin", "point", "thinking", "typing", "reading", "searching", "error", "success", "listening"];
+const FALLBACK_MODES = ["idle", "wave", "celebrate", "spin", "point", "thinking", "file", "typing", "reading", "searching", "error", "success", "listening"];
 const EXPRESSION_CHOICES = ["neutral", "happy", "focused", "surprised"];
 const SIL_VISEME = "sil";
 const LIP_COLOR = 0xb53b4e;
@@ -228,7 +228,7 @@ function createThoughtBubble({ THREE, anchor }) {
   textMesh.renderOrder = 2000;
   textMesh.position.set(0, 0.02, 0.5);
   textMesh.font = THOUGHT_TEXT_FONT_URL;
-  textMesh.fontSize = 0.5;
+  textMesh.fontSize = 0.05;
   textMesh.maxWidth = 1.35;
   textMesh.lineHeight = 1.16;
   textMesh.letterSpacing = 0.004;
@@ -323,6 +323,247 @@ function createThoughtBubble({ THREE, anchor }) {
   };
 }
 
+function resolveFileTargetLocalPosition(target, time = 0) {
+  const t = Number.isFinite(time) ? time : 0;
+  target.set(
+    2.16 + Math.sin(t * 1.35) * 0.13,
+    1.18 + Math.sin(t * 2.15 + 0.45) * 0.15,
+    0.9 + Math.cos(t * 1.1 + 0.75) * 0.08,
+  );
+  return target;
+}
+
+function createFileInteractionEffect({ THREE, anchor, clippy }) {
+  if (!THREE || !anchor || !clippy) return null;
+
+  const group = new THREE.Group();
+  group.visible = false;
+  group.renderOrder = 1600;
+  anchor.add(group);
+
+  const fileGroup = new THREE.Group();
+  group.add(fileGroup);
+
+  const filePaperMaterial = new THREE.MeshStandardMaterial({
+    color: 0xf8fafc,
+    metalness: 0.06,
+    roughness: 0.24,
+    emissive: 0xcaf3ff,
+    emissiveIntensity: 0.24,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  const fileFoldMaterial = new THREE.MeshStandardMaterial({
+    color: 0xe2e8f0,
+    metalness: 0.06,
+    roughness: 0.28,
+    emissive: 0xbdf3ff,
+    emissiveIntensity: 0.2,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  const fileLineMaterial = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const impactMaterial = new THREE.MeshBasicMaterial({
+    color: 0x4dff8e,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+    side: THREE.DoubleSide,
+  });
+  const beamMaterial = new THREE.MeshBasicMaterial({
+    color: 0x4dff8e,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+
+  const filePaperGeometry = new THREE.BoxGeometry(0.9, 1.14, 0.06);
+  const fileFoldGeometry = new THREE.PlaneGeometry(0.24, 0.24);
+  const fileLineGeometry = new THREE.BoxGeometry(0.58, 0.045, 0.016);
+  const impactGeometry = new THREE.RingGeometry(0.09, 0.2, 24);
+  const beamGeometry = new THREE.CylinderGeometry(0.024, 0.014, 1, 12, 1, true);
+
+  const filePaper = new THREE.Mesh(filePaperGeometry, filePaperMaterial);
+  filePaper.castShadow = true;
+  filePaper.receiveShadow = true;
+  fileGroup.add(filePaper);
+
+  const fileFold = new THREE.Mesh(fileFoldGeometry, fileFoldMaterial);
+  fileFold.position.set(0.3, 0.38, 0.04);
+  fileFold.rotation.z = Math.PI * 0.25;
+  fileGroup.add(fileFold);
+
+  const fileLineSpecs = [
+    { y: 0.24, width: 0.95 },
+    { y: 0.06, width: 1.0 },
+    { y: -0.12, width: 0.84 },
+    { y: -0.3, width: 0.62 },
+  ];
+  for (const spec of fileLineSpecs) {
+    const line = new THREE.Mesh(fileLineGeometry, fileLineMaterial);
+    line.position.set(-0.05, spec.y, 0.04);
+    line.scale.x = spec.width;
+    fileGroup.add(line);
+  }
+
+  const impact = new THREE.Mesh(impactGeometry, impactMaterial);
+  impact.position.set(-0.05, 0.03, 0.046);
+  fileGroup.add(impact);
+
+  const leftBeam = new THREE.Mesh(beamGeometry, beamMaterial);
+  const rightBeam = new THREE.Mesh(beamGeometry, beamMaterial.clone());
+  leftBeam.visible = false;
+  rightBeam.visible = false;
+  leftBeam.frustumCulled = false;
+  rightBeam.frustumCulled = false;
+  group.add(leftBeam);
+  group.add(rightBeam);
+
+  const runtime = {
+    targetVisible: false,
+    opacity: 0,
+  };
+
+  const targetLocal = new THREE.Vector3();
+  const eyeLeftWorld = new THREE.Vector3();
+  const eyeRightWorld = new THREE.Vector3();
+  const eyeLeftLocal = new THREE.Vector3();
+  const eyeRightLocal = new THREE.Vector3();
+  const beamEndLocal = new THREE.Vector3();
+  const beamAxis = new THREE.Vector3(0, 1, 0);
+  const beamDirection = new THREE.Vector3();
+  const beamMidpoint = new THREE.Vector3();
+
+  function updateBeam(mesh, start, end, thickness = 1) {
+    beamDirection.subVectors(end, start);
+    const length = beamDirection.length();
+    if (length < 0.0001) {
+      mesh.visible = false;
+      return;
+    }
+
+    beamDirection.multiplyScalar(1 / length);
+    beamMidpoint.copy(start).addScaledVector(beamDirection, length * 0.5);
+
+    mesh.position.copy(beamMidpoint);
+    mesh.quaternion.setFromUnitVectors(beamAxis, beamDirection);
+    mesh.scale.set(thickness, length, thickness);
+    mesh.visible = true;
+  }
+
+  function setActive(active) {
+    runtime.targetVisible = Boolean(active);
+  }
+
+  function getTargetWorldPosition(out, time = clippy.time) {
+    resolveFileTargetLocalPosition(targetLocal, time);
+    out.copy(targetLocal);
+    return anchor.localToWorld(out);
+  }
+
+  function update(dt, time) {
+    const safeDt = Number.isFinite(dt) ? dt : 1 / 60;
+    const t = Number.isFinite(time) ? time : 0;
+    const targetOpacity = runtime.targetVisible ? 1 : 0;
+    const smoothing = Math.min(1, safeDt * (runtime.targetVisible ? 11 : 7));
+    runtime.opacity += (targetOpacity - runtime.opacity) * smoothing;
+
+    resolveFileTargetLocalPosition(fileGroup.position, t);
+    fileGroup.rotation.set(
+      -0.06 + Math.sin(t * 1.6) * 0.035,
+      -0.38 + Math.cos(t * 1.1) * 0.08,
+      0.08 + Math.sin(t * 2.2 + 0.3) * 0.03,
+    );
+    const fileScale = 1 + Math.sin(t * 2.8 + 0.2) * 0.035;
+    fileGroup.scale.setScalar(fileScale);
+
+    filePaperMaterial.opacity = runtime.opacity * 0.95;
+    fileFoldMaterial.opacity = runtime.opacity * 0.9;
+    fileLineMaterial.opacity = runtime.opacity;
+    impactMaterial.opacity = runtime.opacity * (0.5 + Math.abs(Math.sin(t * 11.5)) * 0.36);
+
+    impact.scale.setScalar(1 + Math.sin(t * 9.2) * 0.1);
+    impact.rotation.z = t * 2.4;
+
+    group.visible = runtime.opacity > 0.01 || runtime.targetVisible;
+    if (!group.visible) {
+      leftBeam.visible = false;
+      rightBeam.visible = false;
+      return;
+    }
+
+    beamEndLocal.copy(fileGroup.position);
+    beamEndLocal.x -= 0.05 + Math.sin(t * 3.1) * 0.01;
+    beamEndLocal.y += 0.03 + Math.sin(t * 4.3 + 0.6) * 0.04;
+    beamEndLocal.z += 0.04;
+
+    clippy.leftPupil.getWorldPosition(eyeLeftWorld);
+    clippy.rightPupil.getWorldPosition(eyeRightWorld);
+    eyeLeftLocal.copy(eyeLeftWorld);
+    eyeRightLocal.copy(eyeRightWorld);
+    anchor.worldToLocal(eyeLeftLocal);
+    anchor.worldToLocal(eyeRightLocal);
+
+    beamDirection.subVectors(beamEndLocal, eyeLeftLocal);
+    const leftLength = beamDirection.length();
+    if (leftLength > 0.0001) {
+      eyeLeftLocal.addScaledVector(beamDirection, 0.05 / leftLength);
+    }
+
+    beamDirection.subVectors(beamEndLocal, eyeRightLocal);
+    const rightLength = beamDirection.length();
+    if (rightLength > 0.0001) {
+      eyeRightLocal.addScaledVector(beamDirection, 0.05 / rightLength);
+    }
+
+    const flicker = clamp(0.78 + Math.sin(t * 26) * 0.16 + Math.sin(t * 41 + 0.9) * 0.08, 0.4, 1);
+    const beamOpacity = runtime.opacity * flicker;
+    leftBeam.material.opacity = beamOpacity;
+    rightBeam.material.opacity = beamOpacity;
+
+    updateBeam(leftBeam, eyeLeftLocal, beamEndLocal, 1 + Math.sin(t * 6.1) * 0.05);
+    updateBeam(rightBeam, eyeRightLocal, beamEndLocal, 1 + Math.sin(t * 6.1 + 1.8) * 0.05);
+  }
+
+  function dispose() {
+    if (group.parent) {
+      group.parent.remove(group);
+    }
+
+    filePaperGeometry.dispose();
+    fileFoldGeometry.dispose();
+    fileLineGeometry.dispose();
+    impactGeometry.dispose();
+    beamGeometry.dispose();
+
+    filePaperMaterial.dispose();
+    fileFoldMaterial.dispose();
+    fileLineMaterial.dispose();
+    impactMaterial.dispose();
+    beamMaterial.dispose();
+    rightBeam.material.dispose();
+  }
+
+  return {
+    setActive,
+    getTargetWorldPosition,
+    update,
+    dispose,
+  };
+}
+
 export function createClippyController({ THREE, scene, initialState, avatarId }) {
   const state = { ...initialState };
   const plugins = [officePackPlugin].filter(Boolean);
@@ -362,6 +603,55 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     THREE,
     anchor: clippy.head,
   });
+  const fileInteraction = createFileInteractionEffect({
+    THREE,
+    anchor: clippy.group,
+    clippy,
+  });
+
+  if (typeof clippy.registerAnimation === "function") {
+    const fileLookTarget = new THREE.Vector3();
+
+    clippy.registerAnimation("file", {
+      defaultExpression: "focused",
+      onStart() {
+        fileInteraction?.setActive(true);
+      },
+      onStop() {
+        fileInteraction?.setActive(false);
+      },
+      apply({ clippy, modeTime }) {
+        const settle = 1 - Math.exp(-modeTime * 3.2);
+        const pulse = Math.sin(modeTime * 3.8);
+        const jitter = Math.sin(modeTime * 8.2);
+
+        clippy.rightArm.pivot.rotation.set(
+          -0.58 + pulse * 0.03,
+          -0.5 + Math.sin(modeTime * 1.4) * 0.05,
+          -0.21 + pulse * 0.04,
+        );
+        clippy.rightArm.upper.rotation.z = 0.34 + Math.sin(modeTime * 5.2 + 0.45) * 0.08;
+        clippy.rightArm.lower.rotation.z = -0.78 + Math.sin(modeTime * 5.2 + 1.22) * 0.1;
+
+        clippy.leftArm.pivot.rotation.set(
+          0.08 + Math.sin(modeTime * 1.1) * 0.04,
+          0.22 + Math.sin(modeTime * 1.6 + 0.8) * 0.04,
+          0.82 + Math.sin(modeTime * 2 + 0.3) * 0.04,
+        );
+        clippy.leftArm.upper.rotation.z = -0.63 + Math.sin(modeTime * 2.7 + 0.4) * 0.06;
+        clippy.leftArm.lower.rotation.z = 0.24 + Math.sin(modeTime * 2.7 + 1.3) * 0.06;
+
+        clippy.head.rotation.x = (0.07 + Math.abs(pulse) * 0.04) * settle;
+        clippy.head.rotation.z += (-0.12 + jitter * 0.03) * settle;
+        clippy.group.position.y += (0.02 + Math.abs(Math.sin(modeTime * 2.2)) * 0.03) * settle;
+
+        if (fileInteraction) {
+          fileInteraction.getTargetWorldPosition(fileLookTarget, clippy.time);
+          clippy.setLookTarget(fileLookTarget);
+        }
+      },
+    });
+  }
 
   const availableModes = typeof clippy.listAnimations === "function" ? clippy.listAnimations() : FALLBACK_MODES;
   const internalProps = typeof clippy.listProps === "function" ? clippy.listProps() : [];
@@ -680,6 +970,7 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
       behaviorCache.expression = requestedExpression;
     }
 
+    fileInteraction?.setActive(requestedMode === "file");
     applyPropState(force);
   }
 
@@ -714,6 +1005,7 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
     applyMorphState();
     applyVoiceFrame(frameDt);
     thoughtBubble?.update(frameDt, clippy.time);
+    fileInteraction?.update(frameDt, clippy.time);
   }
 
   function setVoiceActivity(level = 0) {
@@ -752,6 +1044,7 @@ export function createClippyController({ THREE, scene, initialState, avatarId })
 
   function dispose() {
     thoughtBubble?.dispose();
+    fileInteraction?.dispose();
     propManager.detachAll();
     if (propRuntime.id !== null && !propRuntime.isShared && typeof clippy.detachProp === "function") {
       clippy.detachProp(propRuntime.id);
