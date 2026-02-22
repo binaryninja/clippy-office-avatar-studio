@@ -18,6 +18,7 @@ import { createElevenLabsVoice } from "./lib/elevenlabs-voice.js";
 import { assertControllerInterface } from "./lib/controller-utils.js";
 import { mapWsEventToAnimation } from "./lib/ws-event-mapper.js";
 import { createWsPreview } from "./lib/ws-preview.js";
+import { createDesktopWorld, DESKTOP_WORLD_ACTIONS } from "./lib/desktop-world.js";
 
 const canvas = document.getElementById("studioCanvas");
 const stageEl = document.querySelector(".stage");
@@ -29,8 +30,11 @@ const btnReset = document.getElementById("btnReset");
 const btnRandom = document.getElementById("btnRandom");
 const btnCopy = document.getElementById("btnCopy");
 const btnApply = document.getElementById("btnApply");
+const btnWorldToggle = document.getElementById("btnWorldToggle");
 const btnVoice = document.getElementById("btnVoice");
 const btnElevenVoice = document.getElementById("btnElevenVoice");
+const worldActionEl = document.getElementById("worldAction");
+const worldSelectionEl = document.getElementById("worldSelection");
 const characterNameEl = document.getElementById("characterName");
 const characterBackgroundEl = document.getElementById("characterBackground");
 const characterPersonalityEl = document.getElementById("characterPersonality");
@@ -58,11 +62,11 @@ orbit.minDistance = 5.5;
 orbit.maxDistance = 18;
 
 const lights = {
-  hemi: new THREE.HemisphereLight(0x6de8ff, 0x0c0718, 1.1),
-  ambient: new THREE.AmbientLight(0x2b4d66, 0.52),
-  key: new THREE.DirectionalLight(0xa7f6ff, 1.38),
-  fill: new THREE.DirectionalLight(0xff6689, 0.78),
-  rim: new THREE.PointLight(0x00e7ff, 1.16, 22, 2),
+  hemi: new THREE.HemisphereLight(0xf0eee8, 0x050505, 0.88),
+  ambient: new THREE.AmbientLight(0x242424, 0.52),
+  key: new THREE.DirectionalLight(0xf4f2ec, 1.16),
+  fill: new THREE.DirectionalLight(0x742820, 0.44),
+  rim: new THREE.PointLight(0x31100c, 0.6, 20, 2),
 };
 lights.key.position.set(3.2, 5.8, 4.6);
 lights.key.castShadow = true;
@@ -194,9 +198,9 @@ function clearPersistedVoiceCredentials() {
 }
 
 const CAROUSEL_SCENE = {
-  fogColor: 0x0a1325,
+  fogColor: 0x070707,
   fogNear: 12,
-  fogFar: 33,
+  fogFar: 34,
   camera: [0.28, 0.44, 14.2],
   orbitTarget: [0, -0.7, 0],
   minDistance: 7.2,
@@ -215,9 +219,9 @@ function createStageRig() {
   const base = new THREE.Mesh(
     new THREE.CylinderGeometry(7.6, 8.4, 0.68, 120),
     new THREE.MeshStandardMaterial({
-      color: 0x111b30,
-      metalness: 0.52,
-      roughness: 0.34,
+      color: 0x0a0a0a,
+      metalness: 0.48,
+      roughness: 0.4,
     }),
   );
   base.position.y = -3.3;
@@ -226,9 +230,9 @@ function createStageRig() {
   const topDeck = new THREE.Mesh(
     new THREE.CylinderGeometry(6.5, 7.1, 0.16, 100),
     new THREE.MeshStandardMaterial({
-      color: 0x1d2a46,
-      metalness: 0.44,
-      roughness: 0.28,
+      color: 0x151515,
+      metalness: 0.42,
+      roughness: 0.34,
     }),
   );
   topDeck.position.y = -2.88;
@@ -237,11 +241,11 @@ function createStageRig() {
   const outerRing = new THREE.Mesh(
     new THREE.TorusGeometry(7.22, 0.1, 16, 220),
     new THREE.MeshStandardMaterial({
-      color: 0x00e7ff,
-      emissive: 0x00e7ff,
-      emissiveIntensity: 0.52,
-      metalness: 0.82,
-      roughness: 0.2,
+      color: 0xd5d2c9,
+      emissive: 0x292827,
+      emissiveIntensity: 0.12,
+      metalness: 0.72,
+      roughness: 0.24,
     }),
   );
   outerRing.rotation.x = Math.PI / 2;
@@ -250,11 +254,11 @@ function createStageRig() {
   const centerPlate = new THREE.Mesh(
     new THREE.CylinderGeometry(1.45, 1.86, 0.08, 52),
     new THREE.MeshStandardMaterial({
-      color: 0x19233e,
-      metalness: 0.66,
-      roughness: 0.2,
-      emissive: 0xff4d78,
-      emissiveIntensity: 0.14,
+      color: 0x111111,
+      metalness: 0.64,
+      roughness: 0.24,
+      emissive: 0x4e130d,
+      emissiveIntensity: 0.22,
     }),
   );
   centerPlate.position.y = -2.74;
@@ -312,6 +316,19 @@ function createStageRig() {
     slot.anchor.add(group);
   }
 
+  function unmountAvatar(avatarId) {
+    const slot = slotById.get(avatarId);
+    if (!slot) return null;
+
+    const group = slot.anchor.children.find(
+      (child) => child?.userData?.avatarId === avatarId,
+    );
+    if (!group) return null;
+
+    slot.anchor.remove(group);
+    return group;
+  }
+
   function focusAvatar(avatarId, instant = false) {
     const slot = slotById.get(avatarId);
     if (!slot) return;
@@ -348,18 +365,26 @@ function createStageRig() {
     updateSlotPresentation();
   }
 
+  function setVisible(visible) {
+    turntable.visible = Boolean(visible);
+  }
+
   focusAvatar(activeAvatar, true);
 
   return {
     mountAvatar,
+    unmountAvatar,
     focusAvatar,
     update,
+    setVisible,
   };
 }
 
 const stageRig = createStageRig();
 
 let activeAvatarId = AVATAR_ORDER[0] || "clippy";
+let worldModeActive = false;
+let worldAvatarId = "";
 const avatarRuntimeRegistry = new Map();
 let assistantSpeechLevel = 0;
 let assistantViseme = {
@@ -414,6 +439,68 @@ const pointer = {
 const neutralPointer = { x: 0, y: 0 };
 const raycaster = new THREE.Raycaster();
 const pickPointer = new THREE.Vector2();
+
+const WORLD_ACTION_MODE_PREFERENCES = Object.freeze({
+  list: ["file", "searching", "reading", "thinking", "idle"],
+  read: ["reading", "file", "thinking", "idle"],
+  write: ["typing", "thinking", "file", "idle"],
+  search: ["searching", "thinking", "reading", "idle"],
+  delete: ["error", "thinking", "idle"],
+});
+
+function setWorldSelectionText(text) {
+  if (worldSelectionEl) {
+    worldSelectionEl.textContent = String(text || "").trim() || "No world node selected.";
+  }
+}
+
+const desktopWorld = createDesktopWorld({
+  THREE,
+  scene,
+  camera,
+  canvas,
+  onToolAction: handleWorldToolAction,
+});
+
+function refreshWorldStatusPanels({ detail = "", payload = null } = {}) {
+  const actionLabel = String(desktopWorld.getAction() || "auto").toUpperCase();
+  const avatarLabel = String(
+    AVATAR_DEFINITIONS[activeAvatarId]?.label || activeAvatarId || "none",
+  ).toUpperCase();
+  const worldState = worldModeActive ? "WORLD ONLINE" : "WORLD STANDBY";
+  const voiceState = isAnyVoiceConnected() ? "VOICE LINKED" : "VOICE IDLE";
+  const detailLine = String(detail || "").trim()
+    || String(worldSelectionEl?.textContent || "No world node selected.").trim();
+
+  const lastActionLine = payload
+    ? `${String(payload.action || "auto").toUpperCase()} ${String(payload.nodeType || "node").toUpperCase()}`
+    : "NO COMMAND";
+  const targetLine = payload
+    ? String(payload.path || payload.nodeName || "Awaiting target")
+    : "Awaiting target";
+
+  desktopWorld.setStatusPanels({
+    left: {
+      title: "AE-35 Command",
+      lines: [
+        `ACTION ${actionLabel}`,
+        detailLine,
+        `AVATAR ${avatarLabel}`,
+      ],
+      footer: "Discovery Bus",
+    },
+    right: {
+      title: "Mission Status",
+      lines: [
+        worldState,
+        voiceState,
+        `LAST ${lastActionLine}`,
+        targetLine,
+      ],
+      footer: "HAL Link",
+    },
+  });
+}
 
 function setStatus(text, ttlMs = 1600) {
   statusEl.textContent = text;
@@ -698,6 +785,7 @@ function handleVoiceConnectionChange(provider, connected) {
     } else if (provider === "elevenlabs") {
       realtimeVoice.disconnect({ silent: true });
     }
+    refreshWorldStatusPanels();
     return;
   }
 
@@ -705,6 +793,7 @@ function handleVoiceConnectionChange(provider, connected) {
     activeVoiceProvider = null;
     setAssistantMouth();
   }
+  refreshWorldStatusPanels();
 }
 
 const rawElevenLabsConnectionType =
@@ -863,6 +952,138 @@ function handleWsEvent(event) {
     wsSustainedMode = nextMode;
     runtime.state.mode = nextMode;
     applyStateToController();
+  }
+}
+
+function normalizeWorldAction(value) {
+  return DESKTOP_WORLD_ACTIONS.includes(value) ? value : "auto";
+}
+
+function resolveModeForWorldAction(action, runtime) {
+  const availableModes = Array.isArray(runtime?.catalog?.modes)
+    ? runtime.catalog.modes
+    : [];
+  if (!availableModes.length) return "";
+
+  const preferred = WORLD_ACTION_MODE_PREFERENCES[action] || ["idle"];
+  for (const candidate of preferred) {
+    if (availableModes.includes(candidate)) {
+      return candidate;
+    }
+  }
+
+  if (availableModes.includes(runtime?.state?.mode)) {
+    return runtime.state.mode;
+  }
+
+  return availableModes[0] || "";
+}
+
+function applyWorldActionToAvatar(action) {
+  const runtime = getAvatarRuntime();
+  if (!runtime) return;
+
+  const nextMode = resolveModeForWorldAction(action, runtime);
+  if (!nextMode) return;
+
+  runtime.state.mode = nextMode;
+  applyStateToController();
+}
+
+function syncWorldToggleButton() {
+  if (!btnWorldToggle) return;
+  btnWorldToggle.textContent = worldModeActive ? "Exit World" : "Enter World";
+  btnWorldToggle.dataset.state = worldModeActive ? "active" : "idle";
+}
+
+function swapWorldAvatar(avatarId) {
+  const nextRuntime = getAvatarRuntime(avatarId);
+  if (!nextRuntime?.controller?.group) {
+    return false;
+  }
+
+  if (worldAvatarId === avatarId && desktopWorld.isActive()) {
+    return true;
+  }
+
+  if (worldAvatarId) {
+    const previous = desktopWorld.detachAvatar();
+    if (previous.avatarGroup) {
+      stageRig.mountAvatar(previous.avatarId || worldAvatarId, previous.avatarGroup);
+    }
+    worldAvatarId = "";
+  }
+
+  const avatarGroup = stageRig.unmountAvatar(avatarId) || nextRuntime.controller.group;
+  const stageTopY = Number(nextRuntime.definition?.stageTopY);
+  const yOffset = Number.isFinite(stageTopY) ? -stageTopY : 0;
+  const attached = desktopWorld.attachAvatar(avatarId, avatarGroup, { yOffset });
+  if (attached) {
+    worldAvatarId = avatarId;
+  }
+  return attached;
+}
+
+function enterWorldMode({ silent = false } = {}) {
+  if (worldModeActive) return;
+  if (!getAvatarRuntime()) return;
+
+  desktopWorld.setAction(normalizeWorldAction(worldActionEl?.value));
+  desktopWorld.setVisible(true);
+  stageRig.setVisible(false);
+
+  if (!swapWorldAvatar(activeAvatarId)) {
+    desktopWorld.setVisible(false);
+    stageRig.setVisible(true);
+    setStatus("Could not mount avatar into world", 2200);
+    return;
+  }
+
+  worldModeActive = true;
+  syncWorldToggleButton();
+  desktopWorld.focusOnWorldCamera(orbit);
+  scene.fog = new THREE.Fog(0x02050f, 20, 78);
+  setWorldSelectionText(`World active. Click a node to run ${desktopWorld.getAction().toUpperCase()}.`);
+  refreshWorldStatusPanels();
+  if (!silent) {
+    setStatus("Entered desktop world", 1700);
+  }
+}
+
+function exitWorldMode({ silent = false } = {}) {
+  if (!worldModeActive) return;
+
+  const previous = desktopWorld.detachAvatar();
+  if (previous.avatarGroup) {
+    stageRig.mountAvatar(previous.avatarId || activeAvatarId, previous.avatarGroup);
+  }
+
+  worldAvatarId = "";
+  worldModeActive = false;
+  desktopWorld.setVisible(false);
+  stageRig.setVisible(true);
+  stageRig.focusAvatar(activeAvatarId, true);
+  applyScenePreset();
+  syncWorldToggleButton();
+  setWorldSelectionText("No world node selected.");
+  refreshWorldStatusPanels();
+
+  if (!silent) {
+    setStatus("Returned to carousel", 1700);
+  }
+}
+
+function handleWorldToolAction(payload) {
+  if (!payload) return;
+  applyWorldActionToAvatar(payload.action);
+  setWorldSelectionText(`${payload.action.toUpperCase()} ${payload.path}`);
+  refreshWorldStatusPanels({
+    detail: `${payload.action.toUpperCase()} ${payload.path}`,
+    payload,
+  });
+  setStatus(`Tool ${payload.action}: ${payload.nodeName}`, 1800);
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    window.dispatchEvent(new CustomEvent("avatar-world:tool-action", { detail: payload }));
   }
 }
 
@@ -1178,7 +1399,13 @@ function loadAvatar(avatarId, { instant = false, silent = false } = {}) {
   activeAvatarId = avatarId;
   avatarSelectEl.value = avatarId;
 
-  stageRig.focusAvatar(avatarId, instant);
+  if (worldModeActive) {
+    swapWorldAvatar(avatarId);
+    desktopWorld.focusOnWorldCamera(orbit);
+    refreshWorldStatusPanels();
+  } else {
+    stageRig.focusAvatar(avatarId, instant);
+  }
   buildControls(runtime.definition, runtime.catalog);
   syncControlsFromState();
   syncCharacterProfileInputs();
@@ -1187,7 +1414,8 @@ function loadAvatar(avatarId, { instant = false, silent = false } = {}) {
   elevenLabsVoice.syncSessionContext();
 
   if (!silent) {
-    setStatus(`${runtime.definition.label} in focus`, 2100);
+    const suffix = worldModeActive ? "in world focus" : "in focus";
+    setStatus(`${runtime.definition.label} ${suffix}`, 2100);
   }
 }
 
@@ -1236,6 +1464,25 @@ function pickAvatarAt(clientX, clientY) {
 function installGlobalHandlers() {
   avatarSelectEl.addEventListener("change", () => {
     loadAvatar(avatarSelectEl.value);
+  });
+
+  btnWorldToggle?.addEventListener("click", () => {
+    if (worldModeActive) {
+      exitWorldMode();
+    } else {
+      enterWorldMode();
+    }
+  });
+
+  worldActionEl?.addEventListener("change", () => {
+    const normalized = normalizeWorldAction(worldActionEl.value);
+    worldActionEl.value = normalized;
+    desktopWorld.setAction(normalized);
+    refreshWorldStatusPanels({ detail: `World action: ${normalized.toUpperCase()}. Click a node.` });
+    if (worldModeActive) {
+      setWorldSelectionText(`World action: ${normalized.toUpperCase()}. Click a node.`);
+      setStatus(`World action set to ${normalized}`, 1500);
+    }
   });
 
   btnSaveCharacter?.addEventListener("click", () => {
@@ -1365,6 +1612,11 @@ function installGlobalHandlers() {
   });
 
   canvas.addEventListener("click", (event) => {
+    if (worldModeActive) {
+      const worldHit = desktopWorld.pickWorldNode(event.clientX, event.clientY);
+      if (worldHit) return;
+    }
+
     const avatarId = pickAvatarAt(event.clientX, event.clientY);
     if (avatarId && avatarId !== activeAvatarId) {
       loadAvatar(avatarId);
@@ -1404,6 +1656,7 @@ function startRenderLoop() {
     }
 
     stageRig.update(dt);
+    desktopWorld.update(dt);
     orbit.update();
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
@@ -1431,6 +1684,14 @@ function init() {
   populateAvatarSelect();
   syncVoiceCredentialInputs();
   applyVoiceCredentialsToProviders();
+  const normalizedWorldAction = normalizeWorldAction(worldActionEl?.value);
+  if (worldActionEl) {
+    worldActionEl.value = normalizedWorldAction;
+  }
+  desktopWorld.setAction(normalizedWorldAction);
+  syncWorldToggleButton();
+  setWorldSelectionText("No world node selected.");
+  refreshWorldStatusPanels();
   realtimeVoice.init();
   elevenLabsVoice.init();
   installGlobalHandlers();

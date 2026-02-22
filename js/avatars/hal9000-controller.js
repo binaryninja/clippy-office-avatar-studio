@@ -265,6 +265,432 @@ function visemePulseBoost(visemeKey) {
   return 0;
 }
 
+function createSparkTexture(THREE) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, "rgba(255,255,255,1)");
+    gradient.addColorStop(0.1, "rgba(255,240,200,0.9)");
+    gradient.addColorStop(0.35, "rgba(255,180,80,0.6)");
+    gradient.addColorStop(0.65, "rgba(255,100,20,0.2)");
+    gradient.addColorStop(1, "rgba(255,50,0,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  return texture;
+}
+
+function createWireSparkRuntime({
+  THREE,
+  parent,
+  texture,
+  sparkColor = 0xffaa44,
+  sparkCount = 96,
+}) {
+  const positions = new Float32Array(sparkCount * 3);
+  const colors = new Float32Array(sparkCount * 3);
+  const lifetimes = new Float32Array(sparkCount);
+  const maxLifetimes = new Float32Array(sparkCount);
+  const velocities = Array.from({ length: sparkCount }, () => new THREE.Vector3());
+
+  for (let i = 0; i < sparkCount; i += 1) {
+    const pi = i * 3;
+    positions[pi] = 0;
+    positions[pi + 1] = -999;
+    positions[pi + 2] = 0;
+    colors[pi] = 1;
+    colors[pi + 1] = 0.75;
+    colors[pi + 2] = 0.25;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+  const material = new THREE.PointsMaterial({
+    size: 0.06,
+    map: texture,
+    transparent: true,
+    opacity: 1,
+    blending: THREE.AdditiveBlending,
+    vertexColors: true,
+    sizeAttenuation: true,
+    depthWrite: false,
+  });
+
+  const points = new THREE.Points(geometry, material);
+  points.renderOrder = 8;
+  parent.add(points);
+
+  const flash = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: texture,
+    color: sparkColor,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  }));
+  flash.scale.set(0.2, 0.2, 1);
+  flash.renderOrder = 9;
+  parent.add(flash);
+
+  const hotFlash = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: texture,
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  }));
+  hotFlash.scale.set(0.1, 0.1, 1);
+  hotFlash.renderOrder = 10;
+  parent.add(hotFlash);
+
+  const sparkLight = new THREE.PointLight(sparkColor, 0, 3.8, 2);
+  sparkLight.castShadow = false;
+  parent.add(sparkLight);
+
+  return {
+    sparkCount,
+    positions,
+    colors,
+    lifetimes,
+    maxLifetimes,
+    velocities,
+    geometry,
+    material,
+    points,
+    flash,
+    hotFlash,
+    sparkLight,
+    nextSpark: 0,
+    burstCooldown: 0,
+  };
+}
+
+function createHal9000WireRig({ THREE, avatar }) {
+  if (!avatar?.panelRoot) {
+    return {
+      update() {},
+      dispose() {},
+    };
+  }
+
+  const panelW = avatar.metrics?.panelWidth ?? 2;
+  const panelH = avatar.metrics?.panelHeight ?? 5;
+  const panelD = avatar.metrics?.panelDepth ?? 0.5;
+  const frameThickness = avatar.metrics?.frameThickness ?? 0.15;
+  const bodyHalfW = (panelW + frameThickness * 2) / 2 + 0.05;
+  const bodyHalfH = (panelH + frameThickness * 2) / 2 + 0.05;
+  const bodyFrontZ = panelD / 2 + 0.1;
+  const bodyBackZ = -panelD / 2 - 0.08;
+  const collisionMargin = 0.08;
+
+  const segmentCount = 24;
+  const wireLength = 2.8;
+  const segmentLength = wireLength / segmentCount;
+  const gravity = -0.008;
+  const damping = 0.97;
+  const constraintIterations = 8;
+
+  const wireRoot = new THREE.Group();
+  wireRoot.name = "hal9000-wire-root";
+  avatar.panelRoot.add(wireRoot);
+
+  const sparkTexture = createSparkTexture(THREE);
+  const connectorMaterial = new THREE.MeshStandardMaterial({
+    color: 0x333333,
+    metalness: 0.8,
+    roughness: 0.3,
+  });
+  const connectorGeometry = new THREE.CylinderGeometry(0.04, 0.04, 0.12, 8);
+  const upAxis = new THREE.Vector3(0, 1, 0);
+  const tempDirection = new THREE.Vector3();
+  const tempVelocity = new THREE.Vector3();
+
+  function collideWithBody(point) {
+    if (
+      point.x > -bodyHalfW
+      && point.x < bodyHalfW
+      && point.y > -bodyHalfH
+      && point.y < bodyHalfH
+      && point.z > bodyBackZ
+      && point.z < bodyFrontZ
+    ) {
+      point.z = bodyBackZ - collisionMargin;
+      return true;
+    }
+    return false;
+  }
+
+  function createWire({
+    color,
+    anchorOffset,
+    sparkColor = 0xffaa44,
+  }) {
+    const points = [];
+    const prevPoints = [];
+
+    for (let i = 0; i <= segmentCount; i += 1) {
+      const point = new THREE.Vector3(
+        anchorOffset.x + (Math.random() - 0.5) * 0.04,
+        anchorOffset.y - i * segmentLength * 0.52,
+        anchorOffset.z - i * segmentLength * 0.58,
+      );
+      points.push(point);
+      prevPoints.push(point.clone());
+    }
+
+    const linePositions = new Float32Array((segmentCount + 1) * 3);
+    const lineGeometry = new THREE.BufferGeometry();
+    lineGeometry.setAttribute("position", new THREE.BufferAttribute(linePositions, 3));
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const line = new THREE.Line(lineGeometry, lineMaterial);
+    line.frustumCulled = false;
+    wireRoot.add(line);
+
+    const connector = new THREE.Mesh(connectorGeometry, connectorMaterial);
+    connector.position.set(anchorOffset.x, anchorOffset.y, anchorOffset.z);
+    connector.castShadow = true;
+    connector.receiveShadow = true;
+    wireRoot.add(connector);
+
+    const sparks = createWireSparkRuntime({
+      THREE,
+      parent: wireRoot,
+      texture: sparkTexture,
+      sparkColor,
+    });
+
+    return {
+      anchorOffset: new THREE.Vector3(anchorOffset.x, anchorOffset.y, anchorOffset.z),
+      points,
+      prevPoints,
+      linePositions,
+      lineGeometry,
+      line,
+      connector,
+      sparks,
+    };
+  }
+
+  const wires = [
+    createWire({
+      color: 0xcc2222,
+      sparkColor: 0xffb04c,
+      anchorOffset: { x: -0.3, y: 0.4, z: -panelD / 2 - 0.08 },
+    }),
+    createWire({
+      color: 0x22aa44,
+      sparkColor: 0xffa84a,
+      anchorOffset: { x: 0.25, y: 0.1, z: -panelD / 2 - 0.08 },
+    }),
+  ];
+
+  function emitSpark(sparks, origin, baseVelocity, intensity = 1) {
+    const idx = sparks.nextSpark % sparks.sparkCount;
+    sparks.nextSpark += 1;
+    const pi = idx * 3;
+
+    sparks.positions[pi] = origin.x + (Math.random() - 0.5) * 0.01;
+    sparks.positions[pi + 1] = origin.y + (Math.random() - 0.5) * 0.01;
+    sparks.positions[pi + 2] = origin.z + (Math.random() - 0.5) * 0.01;
+
+    const speed = (0.02 + Math.random() * 0.06) * intensity;
+    const angle = Math.random() * Math.PI * 2;
+    const rise = 0.015 + Math.random() * 0.03;
+    sparks.velocities[idx].set(
+      Math.cos(angle) * speed + baseVelocity.x * 1.2,
+      Math.sin(angle) * speed * 0.55 + rise + baseVelocity.y * 0.4,
+      Math.sin(angle * 0.7) * speed + baseVelocity.z * 1.2,
+    );
+
+    sparks.maxLifetimes[idx] = 0.14 + Math.random() * 0.42 * intensity;
+    sparks.lifetimes[idx] = sparks.maxLifetimes[idx];
+
+    sparks.colors[pi] = 1;
+    sparks.colors[pi + 1] = 0.95;
+    sparks.colors[pi + 2] = 0.8;
+  }
+
+  function updateSparks(sparks, dt, tipPoint, baseVelocity) {
+    const step = Math.max(0.4, Math.min(3, dt * 60));
+    let burstFlash = false;
+
+    sparks.burstCooldown -= dt;
+    if (sparks.burstCooldown <= 0 && Math.random() < 0.04 * step) {
+      sparks.burstCooldown = 0.3 + Math.random() * 0.45;
+      burstFlash = true;
+      const burstCount = 14 + Math.floor(Math.random() * 18);
+      for (let i = 0; i < burstCount; i += 1) {
+        emitSpark(sparks, tipPoint, baseVelocity, 2);
+      }
+    }
+
+    const baseEmission = Math.sin(performance.now() * 0.01) > 0 ? 2 : 1;
+    for (let i = 0; i < baseEmission; i += 1) {
+      if (Math.random() < 0.7) emitSpark(sparks, tipPoint, baseVelocity, 0.9);
+    }
+
+    const drag = Math.pow(0.965, step);
+    for (let i = 0; i < sparks.sparkCount; i += 1) {
+      if (sparks.lifetimes[i] <= 0) continue;
+
+      sparks.lifetimes[i] -= dt;
+      if (sparks.lifetimes[i] <= 0) {
+        const pi = i * 3;
+        sparks.positions[pi + 1] = -999;
+        continue;
+      }
+
+      const lifeRatio = sparks.lifetimes[i] / Math.max(0.0001, sparks.maxLifetimes[i]);
+      const velocity = sparks.velocities[i];
+      velocity.y -= 0.0032 * step;
+      velocity.multiplyScalar(drag);
+
+      const pi = i * 3;
+      sparks.positions[pi] += velocity.x * step;
+      sparks.positions[pi + 1] += velocity.y * step;
+      sparks.positions[pi + 2] += velocity.z * step;
+
+      if (lifeRatio > 0.7) {
+        sparks.colors[pi] = 1;
+        sparks.colors[pi + 1] = 0.82 + lifeRatio * 0.18;
+        sparks.colors[pi + 2] = 0.5 + lifeRatio * 0.5;
+      } else if (lifeRatio > 0.4) {
+        sparks.colors[pi] = 1;
+        sparks.colors[pi + 1] = 0.35 + lifeRatio * 0.8;
+        sparks.colors[pi + 2] = lifeRatio * 0.32;
+      } else {
+        sparks.colors[pi] = 0.82 + lifeRatio * 0.5;
+        sparks.colors[pi + 1] = lifeRatio * 0.62;
+        sparks.colors[pi + 2] = 0;
+      }
+    }
+
+    sparks.geometry.attributes.position.needsUpdate = true;
+    sparks.geometry.attributes.color.needsUpdate = true;
+
+    const flashIntensity = burstFlash
+      ? 1
+      : (Math.random() < 0.28 ? Math.random() * 0.55 : 0.04);
+    sparks.flash.position.copy(tipPoint);
+    sparks.flash.material.opacity = flashIntensity;
+    const flashScale = 0.2 + flashIntensity * 1.1;
+    sparks.flash.scale.set(flashScale, flashScale, 1);
+
+    sparks.hotFlash.position.copy(tipPoint);
+    sparks.hotFlash.material.opacity = flashIntensity * 0.78;
+    const hotScale = 0.1 + flashIntensity * 0.4;
+    sparks.hotFlash.scale.set(hotScale, hotScale, 1);
+
+    sparks.sparkLight.position.copy(tipPoint);
+    sparks.sparkLight.intensity = flashIntensity * 4.8;
+  }
+
+  function updateWire(wire, dt, t) {
+    const step = Math.max(0.4, Math.min(3, dt * 60));
+    const dampingStep = Math.pow(damping, step);
+    const anchor = wire.anchorOffset;
+    wire.points[0].copy(anchor);
+
+    for (let i = 1; i <= segmentCount; i += 1) {
+      const curr = wire.points[i];
+      const prev = wire.prevPoints[i];
+
+      tempVelocity.copy(curr).sub(prev).multiplyScalar(dampingStep);
+      prev.copy(curr);
+      curr.add(tempVelocity);
+      curr.y += gravity * step;
+
+      const tipFactor = i / segmentCount;
+      const twitch = 0.005 * tipFactor * tipFactor * step;
+      curr.x += (Math.random() - 0.5) * twitch;
+      curr.y += (Math.random() - 0.5) * twitch * 0.8;
+      curr.z += (Math.random() - 0.5) * twitch;
+      curr.x += Math.sin(t * 4.6 + i * 0.6) * 0.0016 * tipFactor * step;
+      curr.z += Math.cos(t * 3.8 + i * 0.45) * 0.0012 * tipFactor * step;
+    }
+
+    for (let iter = 0; iter < constraintIterations; iter += 1) {
+      wire.points[0].copy(anchor);
+      for (let i = 0; i < segmentCount; i += 1) {
+        const a = wire.points[i];
+        const b = wire.points[i + 1];
+        tempDirection.copy(b).sub(a);
+        const dist = tempDirection.length();
+        if (dist <= 0.000001) continue;
+        tempDirection.multiplyScalar((dist - segmentLength) / dist * 0.5);
+
+        if (i === 0) {
+          b.sub(tempDirection.multiplyScalar(2));
+          tempDirection.multiplyScalar(0.5);
+        } else {
+          a.add(tempDirection);
+          b.sub(tempDirection);
+        }
+      }
+
+      for (let i = 1; i <= segmentCount; i += 1) {
+        collideWithBody(wire.points[i]);
+      }
+    }
+
+    for (let i = 0; i <= segmentCount; i += 1) {
+      const point = wire.points[i];
+      const pi = i * 3;
+      wire.linePositions[pi] = point.x;
+      wire.linePositions[pi + 1] = point.y;
+      wire.linePositions[pi + 2] = point.z;
+    }
+    wire.lineGeometry.attributes.position.needsUpdate = true;
+    wire.lineGeometry.computeBoundingSphere();
+
+    tempDirection.copy(wire.points[1]).sub(anchor);
+    if (tempDirection.lengthSq() > 0.000001) {
+      tempDirection.normalize();
+      wire.connector.quaternion.setFromUnitVectors(upAxis, tempDirection);
+    }
+    wire.connector.position.copy(anchor);
+
+    tempVelocity.copy(wire.points[segmentCount]).sub(wire.points[segmentCount - 1]);
+    updateSparks(
+      wire.sparks,
+      dt,
+      wire.points[segmentCount],
+      tempVelocity,
+    );
+  }
+
+  function update(dt, time) {
+    const wireDt = Math.min(Math.max(dt, 0.001), 0.05);
+    for (const wire of wires) {
+      updateWire(wire, wireDt, time);
+    }
+  }
+
+  return {
+    update,
+    dispose() {
+      sparkTexture.dispose();
+      connectorGeometry.dispose();
+      connectorMaterial.dispose();
+    },
+  };
+}
+
 export function createHal9000Controller({
   THREE,
   scene,
@@ -275,6 +701,7 @@ export function createHal9000Controller({
   const state = { ...initialState };
   const avatar = createHal9000Avatar(THREE, state);
   scene.add(avatar.group);
+  const wireRig = createHal9000WireRig({ THREE, avatar });
 
   const propManager = createPropManager();
   const sharedPropNames = listSharedProps();
@@ -283,6 +710,7 @@ export function createHal9000Controller({
 
   const runtime = {
     elapsed: 0,
+    wireElapsed: 0,
     lookX: 0,
     lookY: 0,
     lookTargetX: 0,
@@ -320,13 +748,21 @@ export function createHal9000Controller({
 
     avatar.materials.lensGlass.color.set(state.lensColor);
     avatar.materials.lensGlass.emissive.set(state.glowColor);
-    avatar.materials.lensGlass.emissiveIntensity = clamp(state.glowIntensity * 0.2, 0, 1);
+    avatar.materials.lensGlass.emissiveIntensity = clamp(0.03 + state.glowIntensity * 0.08, 0, 2);
     avatar.materials.lensGlass.needsUpdate = true;
 
     avatar.materials.iris.color.set(state.irisColor);
+    if (avatar.materials.iris.emissive) {
+      avatar.materials.iris.emissive.set(state.glowColor);
+      avatar.materials.iris.emissiveIntensity = 0.22 + state.glowIntensity * 0.45;
+    }
     avatar.materials.iris.needsUpdate = true;
 
     avatar.materials.pupil.color.set(state.pupilColor);
+    if (avatar.materials.pupil.emissive) {
+      avatar.materials.pupil.emissive.set(state.glowColor);
+      avatar.materials.pupil.emissiveIntensity = 0.18 + state.glowIntensity * 0.35;
+    }
     avatar.materials.pupil.needsUpdate = true;
 
     avatar.materials.glowRing.color.set(state.glowColor);
@@ -343,6 +779,9 @@ export function createHal9000Controller({
   } = {}) {
     avatar.iris.scale.setScalar(clamp(irisScale, 0.4, 2.2));
     avatar.pupil.scale.setScalar(clamp(pupilScale, 0.32, 2.2));
+    if (avatar.hotPoint) {
+      avatar.hotPoint.scale.setScalar(clamp(0.95 + irisScale * 0.16, 0.75, 1.45));
+    }
   }
 
   function applyEyeOffset({ x = 0, y = 0 } = {}) {
@@ -354,6 +793,10 @@ export function createHal9000Controller({
     avatar.glowRing.position.y = y;
     avatar.glowCore.position.x = x;
     avatar.glowCore.position.y = y;
+    if (avatar.hotPoint) {
+      avatar.hotPoint.position.x = x;
+      avatar.hotPoint.position.y = y;
+    }
   }
 
   function applyShapeState() {
@@ -367,7 +810,8 @@ export function createHal9000Controller({
     runtime.lensScale = lensScale;
     avatar.bezelOuter.scale.set(lensScale, lensScale, 1);
     avatar.bezelInner.scale.set(lensScale, lensScale, 1);
-    avatar.lensGlass.scale.set(lensScale, lensScale, 0.46 * lensScale);
+    const lensZScale = avatar.metrics?.lensZScale ?? 0.46;
+    avatar.lensGlass.scale.set(lensScale, lensScale, lensZScale * lensScale);
     avatar.lensHighlight.scale.set(lensScale, lensScale, 1);
 
     runtime.baseIrisScale = clamp(state.irisScale * expr.irisScale, 0.45, 2);
@@ -375,7 +819,7 @@ export function createHal9000Controller({
     applyEyeScale();
 
     const eyeY = state.eyeY + expr.eyeYOffset;
-    avatar.eyeRoot.position.set(0, eyeY, 0.225 + state.eyeZ);
+    avatar.eyeRoot.position.set(0, eyeY, 0.25 + state.eyeZ);
     avatar.faceRoot.position.set(0, eyeY, 0.25 + state.eyeZ);
 
     runtime.baseY = (stageTopY ?? -2.67) + avatar.metrics.groundOffset * state.scale * state.panelHeight + 0.01;
@@ -421,8 +865,8 @@ export function createHal9000Controller({
     const eyeX = pose.eyeX + runtime.lookX * (0.2 + expr.scanWeight * 0.25);
     const eyeY = pose.eyeY + runtime.lookY * 0.18;
     applyEyeOffset({
-      x: clamp(eyeX, -0.11, 0.11),
-      y: clamp(eyeY, -0.09, 0.09),
+      x: clamp(eyeX, -0.16, 0.16),
+      y: clamp(eyeY, -0.14, 0.14),
     });
 
     avatar.group.position.x = runtime.baseX + pose.sway;
@@ -458,14 +902,52 @@ export function createHal9000Controller({
     const pupilScale = runtime.basePupilScale * (1 - pulse * 0.3 + visemeBoost * 0.28);
     applyEyeScale({ irisScale, pupilScale });
 
+    const voiceGlow = clamp(
+      runtime.voiceCurrent * 1.45 + runtime.visemeStrength * 0.85,
+      0,
+      1.8,
+    );
+    const idlePulse = clamp(runtime.modePulse * 0.18 + Math.max(0, visemeBoost) * 0.08, 0, 0.24);
     const glowOpacity = clamp(
-      0.18 + state.glowIntensity * 0.45 + pulse * 0.35 + expr.glowBoost * 0.22,
-      0.08,
+      0.05 + state.glowIntensity * 0.16 + idlePulse * 0.2 + voiceGlow * 0.52 + expr.glowBoost * 0.1,
+      0.03,
       1,
     );
     avatar.materials.glowRing.opacity = glowOpacity;
     avatar.materials.glowCore.opacity = clamp(glowOpacity * 0.82, 0.06, 1);
-    avatar.eyeLight.intensity = 1 + state.glowIntensity * 2.2 + pulse * 1.35 + expr.glowBoost;
+    if (avatar.materials.iris.emissiveIntensity !== undefined) {
+      avatar.materials.iris.emissiveIntensity = (
+        0.22
+        + state.glowIntensity * 0.45
+        + idlePulse * 0.25
+        + voiceGlow * 1.9
+      );
+    }
+    if (avatar.materials.pupil.emissiveIntensity !== undefined) {
+      avatar.materials.pupil.emissiveIntensity = (
+        0.18
+        + state.glowIntensity * 0.35
+        + idlePulse * 0.2
+        + voiceGlow * 2.2
+      );
+    }
+    if (avatar.materials.lensGlass.emissiveIntensity !== undefined) {
+      avatar.materials.lensGlass.emissiveIntensity = clamp(
+        0.03 + state.glowIntensity * 0.08 + idlePulse * 0.05 + voiceGlow * 0.75,
+        0,
+        2,
+      );
+    }
+    if (avatar.hotPoint) {
+      avatar.hotPoint.scale.setScalar(clamp(0.95 + pulse * 0.2, 0.8, 1.5));
+    }
+    avatar.eyeLight.intensity = (
+      0.35
+      + state.glowIntensity * 0.55
+      + idlePulse * 0.3
+      + voiceGlow * 2.6
+      + expr.glowBoost * 0.3
+    );
   }
 
   function applyPropPlacement() {
@@ -559,6 +1041,7 @@ export function createHal9000Controller({
 
   function update(dt, pointer) {
     const frameDt = Math.min(dt, 0.08) * state.speed;
+    const wireDt = Math.min(Math.max(dt, 0.001), 0.05);
 
     if (pointer) {
       runtime.lookTargetX = pointer.x * 0.06;
@@ -567,6 +1050,8 @@ export function createHal9000Controller({
 
     applyAnimationFrame(frameDt);
     applyVoiceFrame(frameDt);
+    runtime.wireElapsed += wireDt;
+    wireRig.update(wireDt, runtime.wireElapsed);
   }
 
   function setVoiceActivity(level = 0) {
@@ -583,6 +1068,7 @@ export function createHal9000Controller({
 
   function dispose() {
     propManager.detachAll();
+    wireRig.dispose();
     scene.remove(avatar.group);
     avatar.dispose();
   }

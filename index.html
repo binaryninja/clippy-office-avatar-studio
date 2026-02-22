@@ -26,9 +26,9 @@
         <canvas id="studioCanvas" aria-label="Avatar preview canvas"></canvas>
         <div class="scan" aria-hidden="true"></div>
         <div class="hud">
-          <p class="eyebrow">Office Avatar Kit</p>
-          <h1>Avatar Studio</h1>
-          <p class="sub">Switch between Clippy, Pushy, and Tacky. Tune settings and export JSON presets.</p>
+          <p class="eyebrow">Discovery Control Deck</p>
+          <h1>Avatar Studio: Mission Mode</h1>
+          <p class="sub">Minimal deep-space controls with HAL-style world instrumentation and avatar command routing.</p>
         </div>
       </section>
 
@@ -60,6 +60,25 @@
               <button type="button" id="btnCopy">Copy JSON</button>
               <button type="button" id="btnApply">Apply JSON</button>
             </div>
+          </section>
+
+          <section class="control-group world-tools">
+            <h3 class="group-title">World</h3>
+            <div class="control world-control">
+              <label class="control-label" for="worldAction">Tool Action</label>
+              <select id="worldAction">
+                <option value="auto">Auto (Dir=List, File=Read)</option>
+                <option value="list">List</option>
+                <option value="read">Read</option>
+                <option value="write">Write</option>
+                <option value="search">Search</option>
+                <option value="delete">Delete</option>
+              </select>
+            </div>
+            <div class="profile-btn-grid">
+              <button type="button" id="btnWorldToggle">Enter World</button>
+            </div>
+            <p id="worldSelection" class="world-selection">No world node selected.</p>
           </section>
 
           <section class="control-group character-profile">
