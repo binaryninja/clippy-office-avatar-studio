@@ -23,6 +23,7 @@ import { createDesktopWorld, DESKTOP_WORLD_ACTIONS } from "./lib/desktop-world.j
 const canvas = document.getElementById("studioCanvas");
 const stageEl = document.querySelector(".stage");
 const statusEl = document.getElementById("status");
+const headerActionsEl = document.querySelector(".header-actions");
 const avatarSelectEl = document.getElementById("avatarSelect");
 const controlsEl = document.getElementById("controlSections");
 const presetJsonEl = document.getElementById("presetJson");
@@ -52,6 +53,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType("local-floor");
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
@@ -427,6 +430,9 @@ let wsSustainedMode = "idle";
 let _wsPreviewInstance = null;
 let wsThinkingText = "";
 let wsThinkingClearTimer = null;
+let xrEnterButton = null;
+let xrSupportChecked = false;
+let xrImmersiveVrSupported = false;
 
 const THINKING_TOKEN_PLACEHOLDER = "...";
 const THINKING_TEXT_MAX_LENGTH = 280;
@@ -1420,11 +1426,124 @@ function loadAvatar(avatarId, { instant = false, silent = false } = {}) {
 }
 
 function resize() {
+  if (renderer.xr.isPresenting) return;
   const width = stageEl.clientWidth || window.innerWidth;
   const height = stageEl.clientHeight || window.innerHeight;
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
+}
+
+function ensureXrEnterButton() {
+  if (!headerActionsEl) return null;
+  if (xrEnterButton) return xrEnterButton;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = "btnEnterVr";
+  button.className = "btn-voice";
+  button.textContent = "VR: Checking";
+  button.disabled = true;
+  button.dataset.state = "syncing";
+
+  headerActionsEl.insertBefore(button, statusEl || null);
+  xrEnterButton = button;
+  return xrEnterButton;
+}
+
+function syncXrEnterButtonState() {
+  if (!xrEnterButton) return;
+
+  if (!xrSupportChecked) {
+    xrEnterButton.textContent = "VR: Checking";
+    xrEnterButton.disabled = true;
+    xrEnterButton.dataset.state = "syncing";
+    return;
+  }
+
+  if (!xrImmersiveVrSupported) {
+    xrEnterButton.textContent = "VR: Unsupported";
+    xrEnterButton.disabled = true;
+    xrEnterButton.dataset.state = "idle";
+    return;
+  }
+
+  xrEnterButton.disabled = false;
+  if (renderer.xr.isPresenting) {
+    xrEnterButton.textContent = "Exit VR";
+    xrEnterButton.dataset.state = "live";
+  } else {
+    xrEnterButton.textContent = "Enter VR";
+    xrEnterButton.dataset.state = "idle";
+  }
+}
+
+async function enterVrSession() {
+  if (!xrImmersiveVrSupported || renderer.xr.isPresenting) return;
+  if (!navigator.xr?.requestSession) return;
+
+  try {
+    const session = await navigator.xr.requestSession("immersive-vr", {
+      requiredFeatures: ["local-floor"],
+      optionalFeatures: ["bounded-floor", "hand-tracking", "layers"],
+    });
+    await renderer.xr.setSession(session);
+  } catch (error) {
+    console.warn("Failed to enter VR session", error);
+    setStatus("Could not enter VR", 2200);
+    syncXrEnterButtonState();
+  }
+}
+
+function setupXrSessionHandlers() {
+  renderer.xr.addEventListener("sessionstart", () => {
+    orbit.enabled = false;
+    syncXrEnterButtonState();
+    setStatus("Entered VR", 1600);
+  });
+
+  renderer.xr.addEventListener("sessionend", () => {
+    orbit.enabled = true;
+    syncXrEnterButtonState();
+    resize();
+    setStatus("Exited VR", 1600);
+  });
+}
+
+async function initWebXr() {
+  const button = ensureXrEnterButton();
+  if (!button) return;
+
+  setupXrSessionHandlers();
+
+  button.addEventListener("click", async () => {
+    if (renderer.xr.isPresenting) {
+      try {
+        await renderer.xr.getSession()?.end();
+      } catch (error) {
+        console.warn("Failed to exit VR session", error);
+      }
+      return;
+    }
+    await enterVrSession();
+  });
+
+  if (!navigator.xr?.isSessionSupported) {
+    xrSupportChecked = true;
+    xrImmersiveVrSupported = false;
+    syncXrEnterButtonState();
+    return;
+  }
+
+  try {
+    xrImmersiveVrSupported = await navigator.xr.isSessionSupported("immersive-vr");
+  } catch (error) {
+    console.warn("Failed to check immersive-vr support", error);
+    xrImmersiveVrSupported = false;
+  }
+
+  xrSupportChecked = true;
+  syncXrEnterButtonState();
 }
 
 function pickAvatarAt(clientX, clientY) {
@@ -1641,7 +1760,7 @@ function populateAvatarSelect() {
 function startRenderLoop() {
   const clock = new THREE.Clock();
 
-  function animate() {
+  renderer.setAnimationLoop(() => {
     const dt = clock.getDelta();
 
     for (const [avatarId, runtime] of avatarRuntimeRegistry) {
@@ -1657,12 +1776,11 @@ function startRenderLoop() {
 
     stageRig.update(dt);
     desktopWorld.update(dt);
-    orbit.update();
+    if (!renderer.xr.isPresenting) {
+      orbit.update();
+    }
     renderer.render(scene, camera);
-    requestAnimationFrame(animate);
-  }
-
-  animate();
+  });
 }
 
 function initWsPreview() {
@@ -1695,6 +1813,7 @@ function init() {
   realtimeVoice.init();
   elevenLabsVoice.init();
   installGlobalHandlers();
+  void initWebXr();
   applyScenePreset();
   createAvatarRuntimes();
   initWsPreview();
