@@ -16,6 +16,31 @@ const DEFAULT_SCELD_MODEL_URLS = Object.freeze([
   new URL(/* @vite-ignore */ "../../assets/models/sceld.gltf", import.meta.url).href,
 ]);
 const SCELD_MODEL_TARGET_LONGEST_DIMENSION = 3.45;
+const DEFAULT_WORLD_SHIP_MODEL_URLS = Object.freeze([
+  new URL(/* @vite-ignore */ "../../add-to-project/scene.gltf", import.meta.url).href,
+]);
+const WORLD_SHIP_TARGET_LONGEST_DIMENSION = 0.36;
+const WORLD_SHIP_COCKPIT_FORWARD_OFFSET_RATIO = 0.033_823_53;
+const WORLD_SHIP_COCKPIT_VERTICAL_OFFSET_RATIO = 0.011_764_71;
+const WORLD_SHIP_COCKPIT_REFERENCE_LONGEST_DIMENSION = 13.6;
+const WORLD_SHIP_COCKPIT_SCALE = WORLD_SHIP_TARGET_LONGEST_DIMENSION
+  / WORLD_SHIP_COCKPIT_REFERENCE_LONGEST_DIMENSION;
+const WORLD_SHIP_COCKPIT_ANCHOR_NAME_HINTS = Object.freeze([
+  "window_4 - Default_0",
+  "window",
+  "reactfront_reactfront_0",
+  "reactfront",
+]);
+const WORLD_SHIP_EARTH_STANDOFF_RATIO = 0.032;
+const WORLD_SHIP_EARTH_SIDE_RATIO = 0.048;
+const WORLD_SHIP_EARTH_ALTITUDE_RATIO = 0.004;
+const WORLD_SHIP_MIN_STANDOFF = 0.08;
+const WORLD_SHIP_MIN_SIDE = 0.12;
+const WORLD_SHIP_MIN_ALTITUDE = 0.015;
+const WORLD_SHIP_CAMERA_LOCAL_POSITION_DESKTOP = Object.freeze([0, 0.012, -0.028]);
+const WORLD_SHIP_CAMERA_LOCAL_TARGET_DESKTOP = Object.freeze([0, 0.01, -1.028]);
+const WORLD_SHIP_CAMERA_LOCAL_POSITION_XR = Object.freeze([0, 0.034, -0.19]);
+const WORLD_SHIP_CAMERA_LOCAL_TARGET_XR = Object.freeze([0, 0.028, -1.19]);
 
 const DIRECTORY_STRUCTURE = Object.freeze({
   name: "workspace",
@@ -532,6 +557,22 @@ function resolveSceldModelUrls() {
   return urls;
 }
 
+function resolveWorldShipModelUrls() {
+  const urls = [];
+  const runtimeUrl = typeof window !== "undefined"
+    ? String(window.WORLD_SHIP_MODEL_URL || "").trim()
+    : "";
+  if (runtimeUrl) {
+    urls.push(runtimeUrl);
+  }
+  for (const url of DEFAULT_WORLD_SHIP_MODEL_URLS) {
+    if (!urls.includes(url)) {
+      urls.push(url);
+    }
+  }
+  return urls;
+}
+
 function trackMaterialTextures(root, textureSink, seen = new Set()) {
   if (!root || !Array.isArray(textureSink)) return;
   root.traverse((node) => {
@@ -546,6 +587,40 @@ function trackMaterialTextures(root, textureSink, seen = new Set()) {
       }
     }
   });
+}
+
+function findNodeByNameHint(root, hints = []) {
+  for (const hint of hints) {
+    const exactMatch = root?.getObjectByName?.(hint);
+    if (exactMatch) return exactMatch;
+  }
+
+  const normalizedHints = hints
+    .map((entry) => String(entry || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  let fallbackNode = null;
+  root?.traverse?.((node) => {
+    if (fallbackNode || !node?.name) return;
+    const normalizedName = String(node.name).toLowerCase();
+    if (normalizedHints.some((hint) => normalizedName.includes(hint))) {
+      fallbackNode = node;
+    }
+  });
+  return fallbackNode;
+}
+
+function resolveWorldShipCockpitAnchor(root) {
+  return findNodeByNameHint(root, WORLD_SHIP_COCKPIT_ANCHOR_NAME_HINTS);
+}
+
+function getObjectLocalBoundsCenter(THREE, root, object, target) {
+  if (!THREE || !root || !object || !target) return false;
+  const bounds = new THREE.Box3().setFromObject(object);
+  if (bounds.isEmpty()) return false;
+  bounds.getCenter(target);
+  root.worldToLocal(target);
+  return true;
 }
 
 function prepareImportedCockpitModel(THREE, modelRoot) {
@@ -571,6 +646,31 @@ function prepareImportedCockpitModel(THREE, modelRoot) {
   });
 }
 
+function prepareImportedWorldShipModel(THREE, modelRoot) {
+  if (!modelRoot) return;
+  modelRoot.traverse((node) => {
+    if (!node?.isMesh) return;
+    node.castShadow = false;
+    node.receiveShadow = false;
+    node.frustumCulled = false;
+
+    const materials = Array.isArray(node.material) ? node.material : [node.material];
+    for (const material of materials) {
+      if (!material) continue;
+      const materialName = String(material.name || "").toLowerCase();
+      const isGlass = materialName.includes("glass") || materialName.includes("window");
+      if (isGlass) {
+        material.transparent = true;
+        material.opacity = clamp(Number(material.opacity) || 0.62, 0.14, 0.72);
+        if ("depthWrite" in material) material.depthWrite = false;
+        if ("side" in material) material.side = THREE.DoubleSide;
+        continue;
+      }
+      if ("side" in material) material.side = THREE.FrontSide;
+    }
+  });
+}
+
 function normalizeImportedCockpitModel(THREE, modelRoot) {
   const bounds = new THREE.Box3().setFromObject(modelRoot);
   if (bounds.isEmpty()) return;
@@ -590,6 +690,53 @@ function normalizeImportedCockpitModel(THREE, modelRoot) {
   modelRoot.position.sub(center);
   modelRoot.position.y -= size.y * 0.07;
   modelRoot.position.z -= size.z * 0.24;
+}
+
+function normalizeImportedWorldShipModel(THREE, modelRoot) {
+  const bounds = new THREE.Box3().setFromObject(modelRoot);
+  if (bounds.isEmpty()) return;
+
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  const cockpitCenter = new THREE.Vector3();
+  const cockpitForwardOffset = WORLD_SHIP_TARGET_LONGEST_DIMENSION
+    * WORLD_SHIP_COCKPIT_FORWARD_OFFSET_RATIO;
+  const cockpitVerticalOffset = WORLD_SHIP_TARGET_LONGEST_DIMENSION
+    * WORLD_SHIP_COCKPIT_VERTICAL_OFFSET_RATIO;
+  bounds.getSize(size);
+  bounds.getCenter(center);
+  const longestDimension = Math.max(size.x, size.y, size.z);
+  if (Number.isFinite(longestDimension) && longestDimension > 1e-6) {
+    modelRoot.scale.multiplyScalar(WORLD_SHIP_TARGET_LONGEST_DIMENSION / longestDimension);
+  }
+
+  bounds.setFromObject(modelRoot);
+  bounds.getCenter(center);
+  modelRoot.position.sub(center);
+  modelRoot.updateMatrixWorld(true);
+
+  const cockpitAnchor = resolveWorldShipCockpitAnchor(modelRoot);
+  if (
+    cockpitAnchor
+    && getObjectLocalBoundsCenter(THREE, modelRoot, cockpitAnchor, cockpitCenter)
+    && Number.isFinite(cockpitCenter.z)
+  ) {
+    if (cockpitCenter.z > 0) {
+      modelRoot.rotation.y += Math.PI;
+      modelRoot.updateMatrixWorld(true);
+      getObjectLocalBoundsCenter(THREE, modelRoot, cockpitAnchor, cockpitCenter);
+    }
+
+    modelRoot.position.sub(cockpitCenter);
+    modelRoot.position.y -= cockpitVerticalOffset;
+    modelRoot.position.z -= cockpitForwardOffset;
+    return;
+  }
+
+  bounds.setFromObject(modelRoot);
+  bounds.getSize(size);
+  modelRoot.position.y -= size.y * 0.11;
+  modelRoot.position.z += size.z * 0.46;
 }
 
 function loadImportedCockpitModel({
@@ -645,6 +792,59 @@ function loadImportedCockpitModel({
         cockpitRig.userData.modelSource = "imported";
         cockpitRig.userData.modelUrl = url;
         cockpitRig.userData.modelStatus = "loaded";
+      },
+      undefined,
+      () => {
+        if (cancelled) return;
+        tryLoad(index + 1);
+      },
+    );
+  }
+
+  tryLoad(0);
+  return () => {
+    cancelled = true;
+  };
+}
+
+function loadWorldShipModel({
+  THREE,
+  worldShipRig,
+  disposableTextures,
+} = {}) {
+  if (!THREE || !worldShipRig) {
+    return () => {};
+  }
+
+  const candidateUrls = resolveWorldShipModelUrls();
+  if (!candidateUrls.length) {
+    return () => {};
+  }
+
+  const loader = new GLTFLoader();
+  const trackedTextureSet = new Set();
+  let cancelled = false;
+
+  function tryLoad(index) {
+    if (cancelled || index >= candidateUrls.length) return;
+    const url = candidateUrls[index];
+    loader.load(
+      url,
+      (gltf) => {
+        if (cancelled) return;
+        const modelRoot = gltf?.scene || gltf?.scenes?.[0] || null;
+        if (!modelRoot) {
+          tryLoad(index + 1);
+          return;
+        }
+
+        prepareImportedWorldShipModel(THREE, modelRoot);
+        normalizeImportedWorldShipModel(THREE, modelRoot);
+        trackMaterialTextures(modelRoot, disposableTextures, trackedTextureSet);
+        worldShipRig.add(modelRoot);
+        worldShipRig.userData.modelSource = "imported";
+        worldShipRig.userData.modelUrl = url;
+        worldShipRig.userData.modelStatus = "loaded";
       },
       undefined,
       () => {
@@ -1226,6 +1426,7 @@ export function createDesktopWorld({
   camera,
   canvas,
   onToolAction,
+  onDebugStatus,
 } = {}) {
   const CAMERA_TRAVEL_DURATION_SECONDS = 3 * 60 * 60;
   const WORLD_CAMERA_FOV_DEGREES = 38;
@@ -1243,13 +1444,26 @@ export function createDesktopWorld({
   root.name = "desktop-world";
   scene.add(root);
 
+  const worldShipRig = new THREE.Group();
+  worldShipRig.name = "world-discovery-ship-rig";
+  worldShipRig.userData.modelSource = "none";
+  worldShipRig.userData.modelStatus = "fallback";
+  worldShipRig.visible = false;
+  root.add(worldShipRig);
+
   const cockpitRig = createCockpitRig(THREE);
+  cockpitRig.scale.setScalar(WORLD_SHIP_COCKPIT_SCALE);
   cockpitRig.visible = false;
-  camera.add(cockpitRig);
+  worldShipRig.add(cockpitRig);
 
   const animatedLights = [];
   const animatedObjects = [];
   const disposableTextures = [];
+  const cancelWorldShipModelLoad = loadWorldShipModel({
+    THREE,
+    worldShipRig,
+    disposableTextures,
+  });
   const cancelCockpitModelLoad = loadImportedCockpitModel({
     THREE,
     cockpitRig,
@@ -1294,6 +1508,7 @@ export function createDesktopWorld({
   let attachedAvatarId = "";
   let elapsed = 0;
   let worldOrbit = null;
+  let xrPresentationActive = false;
   const cameraTravel = {
     active: false,
     elapsed: 0,
@@ -1308,6 +1523,17 @@ export function createDesktopWorld({
   const cameraTargetTmp = new THREE.Vector3();
   const worldAnchorEarth = new THREE.Vector3();
   const worldAnchorJupiter = new THREE.Vector3();
+  const cameraWorldPosition = new THREE.Vector3();
+  const worldShipPosition = new THREE.Vector3();
+  const worldShipForward = new THREE.Vector3();
+  const worldShipSide = new THREE.Vector3();
+  const worldShipLookTarget = new THREE.Vector3();
+  const worldShipCameraWorldPosition = new THREE.Vector3();
+  const worldShipCameraWorldTarget = new THREE.Vector3();
+  const worldShipCameraLocalPositionDesktop = new THREE.Vector3(...WORLD_SHIP_CAMERA_LOCAL_POSITION_DESKTOP);
+  const worldShipCameraLocalTargetDesktop = new THREE.Vector3(...WORLD_SHIP_CAMERA_LOCAL_TARGET_DESKTOP);
+  const worldShipCameraLocalPositionXr = new THREE.Vector3(...WORLD_SHIP_CAMERA_LOCAL_POSITION_XR);
+  const worldShipCameraLocalTargetXr = new THREE.Vector3(...WORLD_SHIP_CAMERA_LOCAL_TARGET_XR);
   const travelForward = new THREE.Vector3();
   const travelSide = new THREE.Vector3();
   const worldUp = new THREE.Vector3(0, 1, 0);
@@ -1341,6 +1567,31 @@ export function createDesktopWorld({
   transferMarker.name = "earth-jupiter-transfer-marker";
   transferMarker.visible = false;
   root.add(transferMarker);
+
+  function emitDebugStatus(message, { level = "info", data = null } = {}) {
+    const text = String(message || "").trim();
+    if (!text) return;
+
+    if (typeof onDebugStatus === "function") {
+      onDebugStatus({
+        level,
+        message: text,
+        data,
+      });
+      return;
+    }
+
+    const logger = level === "error"
+      ? console.error
+      : level === "warn"
+        ? console.warn
+        : console.info;
+    if (data) {
+      logger(`[DesktopWorld] ${text}`, data);
+      return;
+    }
+    logger(`[DesktopWorld] ${text}`);
+  }
 
   function buildContextSet(selectedId) {
     const context = new Set();
@@ -1499,6 +1750,74 @@ export function createDesktopWorld({
     transferMarker.visible = active;
   }
 
+  function updateWorldShipPlacement() {
+    const earthAnchor = environment?.getWorldAnchor?.("earth", worldAnchorEarth);
+    const jupiterAnchor = environment?.getWorldAnchor?.("jupiter", worldAnchorJupiter);
+    if (!earthAnchor || !jupiterAnchor) {
+      worldShipRig.visible = false;
+      return;
+    }
+
+    const routeDistance = Math.max(1e-5, earthAnchor.distanceTo(jupiterAnchor));
+    const shipStandoff = Math.max(routeDistance * WORLD_SHIP_EARTH_STANDOFF_RATIO, WORLD_SHIP_MIN_STANDOFF);
+    const shipSideOffset = Math.max(routeDistance * WORLD_SHIP_EARTH_SIDE_RATIO, WORLD_SHIP_MIN_SIDE);
+    const shipAltitudeOffset = Math.max(routeDistance * WORLD_SHIP_EARTH_ALTITUDE_RATIO, WORLD_SHIP_MIN_ALTITUDE);
+
+    worldShipForward.copy(jupiterAnchor).sub(earthAnchor);
+    worldShipForward.y = 0;
+    if (worldShipForward.lengthSq() < 1e-6) {
+      worldShipForward.set(0, 0, -1);
+    } else {
+      worldShipForward.normalize();
+    }
+
+    worldShipSide.crossVectors(worldShipForward, worldUp);
+    if (worldShipSide.lengthSq() < 1e-6) {
+      worldShipSide.set(1, 0, 0);
+    } else {
+      worldShipSide.normalize();
+    }
+
+    worldShipPosition.copy(earthAnchor);
+    worldShipPosition.addScaledVector(worldShipForward, -shipStandoff);
+    worldShipPosition.addScaledVector(worldShipSide, shipSideOffset);
+    worldShipPosition.y += shipAltitudeOffset;
+    worldShipRig.position.copy(worldShipPosition);
+
+    worldShipLookTarget.copy(worldShipPosition).addScaledVector(worldShipForward, 1);
+    worldShipLookTarget.y = worldShipPosition.y;
+    worldShipRig.lookAt(worldShipLookTarget);
+    worldShipRig.visible = active && !xrPresentationActive;
+  }
+
+  function getWorldShipCameraPose(positionTarget = null, targetTarget = null, { xr = false } = {}) {
+    if (!active) return false;
+    const localPosition = xr ? worldShipCameraLocalPositionXr : worldShipCameraLocalPositionDesktop;
+    const localTarget = xr ? worldShipCameraLocalTargetXr : worldShipCameraLocalTargetDesktop;
+    worldShipRig.updateMatrixWorld(true);
+    worldShipCameraWorldPosition.copy(localPosition).applyMatrix4(worldShipRig.matrixWorld);
+    worldShipCameraWorldTarget.copy(localTarget).applyMatrix4(worldShipRig.matrixWorld);
+    if (positionTarget) {
+      positionTarget.copy(worldShipCameraWorldPosition);
+    }
+    if (targetTarget) {
+      targetTarget.copy(worldShipCameraWorldTarget);
+    }
+    return true;
+  }
+
+  function lockCameraToWorldShip() {
+    const resolved = getWorldShipCameraPose(cameraPosTmp, cameraTargetTmp);
+    if (!resolved) return false;
+    camera.position.copy(cameraPosTmp);
+    camera.lookAt(cameraTargetTmp);
+    if (worldOrbit) {
+      worldOrbit.target.copy(cameraTargetTmp);
+      worldOrbit.update();
+    }
+    return true;
+  }
+
   function setStatusPanels({ left = null, right = null } = {}) {
     if (left) environment?.setPanelText?.("left", left);
     if (right) environment?.setPanelText?.("right", right);
@@ -1507,6 +1826,7 @@ export function createDesktopWorld({
   function setVisible(nextVisible) {
     active = Boolean(nextVisible);
     root.visible = active;
+    worldShipRig.visible = active && !xrPresentationActive;
     cockpitRig.visible = active;
     setWorldCameraFov(active ? WORLD_CAMERA_FOV_DEGREES : defaultCameraFov);
     if (worldOrbit) {
@@ -1522,6 +1842,12 @@ export function createDesktopWorld({
       return;
     }
     updateTransferTrajectory(cameraTravel.progress);
+    updateWorldShipPlacement();
+  }
+
+  function setXrPresentationActive(nextActive) {
+    xrPresentationActive = Boolean(nextActive);
+    worldShipRig.visible = active && !xrPresentationActive;
   }
 
   function attachAvatar(avatarId, avatarGroup, { yOffset = 0 } = {}) {
@@ -1614,7 +1940,20 @@ export function createDesktopWorld({
     root.updateMatrixWorld(true);
     const earthAnchor = environment?.getWorldAnchor?.("earth", worldAnchorEarth);
     const jupiterAnchor = environment?.getWorldAnchor?.("jupiter", worldAnchorJupiter);
-    if (!earthAnchor || !jupiterAnchor) return false;
+    if (!earthAnchor || !jupiterAnchor) {
+      emitDebugStatus(
+        "Could not resolve Earth/Jupiter anchors for transfer camera; using fallback view.",
+        {
+          level: "warn",
+          data: {
+            hasEarthAnchor: Boolean(earthAnchor),
+            hasJupiterAnchor: Boolean(jupiterAnchor),
+            worldScaleMode: environment?.getScaleMode?.() || "unknown",
+          },
+        },
+      );
+      return false;
+    }
     const routeDistance = Math.max(1e-5, earthAnchor.distanceTo(jupiterAnchor));
     const earthRadius = Number(environment?.getWorldBodyRadius?.("earth")) || 0;
     const jupiterRadius = Number(environment?.getWorldBodyRadius?.("jupiter")) || 0;
@@ -1681,29 +2020,54 @@ export function createDesktopWorld({
 
     cameraTravel.elapsed = 0;
     cameraTravel.progress = 0;
-    cameraTravel.active = true;
+    cameraTravel.active = false;
     updateTransferTrajectory(0);
+    updateWorldShipPlacement();
 
-    camera.position.copy(cameraTravel.startPos);
-    if (worldOrbit) {
-      worldOrbit.target.copy(cameraTravel.startTarget);
-      worldOrbit.update();
-    } else {
+    const lockedToShip = lockCameraToWorldShip();
+    if (!lockedToShip) {
+      camera.position.copy(cameraTravel.startPos);
+      if (worldOrbit) {
+        worldOrbit.target.copy(cameraTravel.startTarget);
+        worldOrbit.update();
+      }
       camera.lookAt(cameraTravel.startTarget);
     }
+    camera.getWorldPosition(cameraWorldPosition);
+    emitDebugStatus("Earth/Jupiter transfer camera initialized.", {
+      level: "info",
+      data: {
+        routeDistance,
+        cameraLockedToShip: lockedToShip,
+        startPosLocal: cameraTravel.startPos.toArray(),
+        cameraWorldPos: cameraWorldPosition.toArray(),
+        cameraParentPos: camera.parent?.position?.toArray?.() || null,
+        startTarget: cameraTravel.startTarget.toArray(),
+        endPos: cameraTravel.endPos.toArray(),
+        endTarget: cameraTravel.endTarget.toArray(),
+      },
+    });
     return true;
   }
 
   function focusOnWorldCamera(orbit) {
     worldOrbit = orbit || worldOrbit;
     if (worldOrbit) {
-      worldOrbit.minDistance = 4;
+      // World transfer starts very close to Earth; prevent OrbitControls from pushing camera backward.
+      worldOrbit.minDistance = 0.001;
       worldOrbit.maxDistance = 45;
     }
 
     const startedTravel = startEarthToJupiterCameraTravel();
     if (startedTravel) return;
 
+    emitDebugStatus("Falling back to static deck camera placement.", {
+      level: "warn",
+      data: {
+        fallbackCameraPosition: [0.58, 1.78, 9.6],
+        fallbackOrbitTarget: [0, -0.15, -3.05],
+      },
+    });
     camera.position.set(0.58, 1.78, 9.6);
     if (worldOrbit) {
       worldOrbit.target.set(0, -0.15, -3.05);
@@ -1733,9 +2097,8 @@ export function createDesktopWorld({
       camera.position.copy(cameraPosTmp);
       if (worldOrbit) {
         worldOrbit.target.copy(cameraTargetTmp);
-      } else {
-        camera.lookAt(cameraTargetTmp);
       }
+      camera.lookAt(cameraTargetTmp);
 
       if (normalized >= 1) {
         cameraTravel.active = false;
@@ -1791,6 +2154,9 @@ export function createDesktopWorld({
       }
 
     }
+
+    updateWorldShipPlacement();
+    lockCameraToWorldShip();
 
     for (const entry of graph.entries) {
       const mesh = entry.mesh;
@@ -1852,17 +2218,18 @@ export function createDesktopWorld({
   }
 
   function dispose() {
+    cancelWorldShipModelLoad?.();
     cancelCockpitModelLoad?.();
     environment?.dispose?.();
     scene.remove(root);
-    if (cockpitRig.parent === camera) {
-      camera.remove(cockpitRig);
+    if (worldShipRig.parent === root) {
+      root.remove(worldShipRig);
     }
     transferPathGeometry.dispose();
     transferPathMaterial.dispose();
     transferMarker.geometry.dispose();
     transferMarker.material.dispose();
-    safeDisposeObject3D(cockpitRig);
+    safeDisposeObject3D(worldShipRig);
     safeDisposeObject3D(root);
     for (const texture of disposableTextures) {
       if (texture && typeof texture.dispose === "function") {
@@ -1894,6 +2261,9 @@ export function createDesktopWorld({
     detachAvatar,
     pickWorldNode,
     pickWorldNodeFromRay,
+    getWorldShipCameraPose,
+    isCameraLockedToShip: () => active,
+    setXrPresentationActive,
     focusOnWorldCamera,
     update,
     dispose,

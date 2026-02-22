@@ -10,7 +10,7 @@ import getElipticLines from "../../solar-system/src/getElipticLines.js";
 const ROCK_OBJECT_FILES = ["Rock1.obj", "Rock2.obj", "Rock3.obj"];
 const KM_PER_AU = 149_597_870.7;
 const DAYS_PER_EARTH_YEAR = 365.256363004;
-const SIMULATION_YEARS_PER_SECOND = 0.06;
+const SIMULATION_YEARS_PER_SECOND = 0.002;
 const MIN_BODY_DIAMETER_PX = 16;
 const MIN_SUN_DIAMETER_PX = 24;
 const MIN_BODY_CAMERA_DISTANCE = 1e-5;

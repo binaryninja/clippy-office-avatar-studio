@@ -20,6 +20,17 @@ import { mapWsEventToAnimation } from "./lib/ws-event-mapper.js";
 import { createWsPreview } from "./lib/ws-preview.js";
 import { createDesktopWorld, DESKTOP_WORLD_ACTIONS } from "./lib/desktop-world.js";
 
+const DEFAULT_AVATAR_ID = "hal9000";
+const FALLBACK_AVATAR_ID = "clippy";
+const ELEVENLABS_HAL9000_AGENT_ID = "agent_2601khypzbkje0hvtr252mmavwam";
+
+function resolveInitialAvatarId() {
+  if (AVATAR_ORDER.includes(DEFAULT_AVATAR_ID)) {
+    return DEFAULT_AVATAR_ID;
+  }
+  return AVATAR_ORDER[0] || FALLBACK_AVATAR_ID;
+}
+
 const canvas = document.getElementById("studioCanvas");
 const stageEl = document.querySelector(".stage");
 const statusEl = document.getElementById("status");
@@ -88,12 +99,12 @@ const CHARACTER_PROFILE_MAX_LENGTH = 420;
 const VOICE_CREDENTIALS_STORAGE_KEY = "office-avatar-studio:voice-credentials:v1";
 const ELEVENLABS_AGENT_PRESETS = Object.freeze([
   {
-    label: "Towelie",
-    agentId: "agent_6201kh80gehme6wacehwktq31hsk",
+    label: "Hal9000",
+    agentId: ELEVENLABS_HAL9000_AGENT_ID,
   },
   {
-    label: "Hal9000",
-    agentId: "agent_2601khypzbkje0hvtr252mmavwam",
+    label: "Towelie",
+    agentId: "agent_6201kh80gehme6wacehwktq31hsk",
   },
 ]);
 
@@ -293,7 +304,7 @@ function createStageRig() {
   let currentRotation = 0;
   let targetRotation = 0;
   let velocity = 0;
-  let activeAvatar = AVATAR_ORDER[0] || "clippy";
+  let activeAvatar = resolveInitialAvatarId();
 
   function updateSlotPresentation() {
     for (const slot of slots) {
@@ -390,7 +401,7 @@ function createStageRig() {
 
 const stageRig = createStageRig();
 
-let activeAvatarId = AVATAR_ORDER[0] || "clippy";
+let activeAvatarId = resolveInitialAvatarId();
 let worldModeActive = false;
 let worldAvatarId = "";
 const avatarRuntimeRegistry = new Map();
@@ -414,7 +425,7 @@ const DEFAULT_OPENAI_API_KEY =
 const DEFAULT_ELEVENLABS_AGENT_ID =
   String(window.ELEVENLABS_AGENT_ID || "").trim()
   || String(import.meta.env.VITE_ELEVENLABS_AGENT_ID || "").trim()
-  || "agent_6201kh80gehme6wacehwktq31hsk";
+  || ELEVENLABS_HAL9000_AGENT_ID;
 const DEFAULT_ELEVENLABS_API_KEY =
   String(window.ELEVENLABS_API_KEY || "").trim()
   || String(import.meta.env.VITE_ELEVENLABS_API_KEY || "").trim();
@@ -439,6 +450,7 @@ let xrEnterButton = null;
 let xrSupportChecked = false;
 let xrImmersiveVrSupported = false;
 let xrControllersReady = false;
+let xrStartupAlignFrames = 0;
 
 const THINKING_TOKEN_PLACEHOLDER = "...";
 const THINKING_TEXT_MAX_LENGTH = 280;
@@ -448,6 +460,9 @@ const XR_WORLD_PICK_DISTANCE = 48;
 const XR_MOVE_SPEED_MPS = 2.45;
 const XR_TURN_SPEED_RPS = 1.6;
 const XR_AXIS_DEADZONE = 0.2;
+const XR_WORLD_SHIP_LOCK_ENABLED = false;
+const XR_WORLD_FALLBACK_BACKOFF = 0.44;
+const XR_WORLD_FALLBACK_LIFT = 0.06;
 
 const pointer = {
   x: 0,
@@ -463,11 +478,22 @@ const xrMoveForward = new THREE.Vector3();
 const xrMoveRight = new THREE.Vector3();
 const xrMoveDelta = new THREE.Vector3();
 const xrHeadPosition = new THREE.Vector3();
+const xrAlignCurrentHead = new THREE.Vector3();
+const xrAlignDesiredForward = new THREE.Vector3();
+const xrAlignCurrentForward = new THREE.Vector3();
+const xrAlignOffset = new THREE.Vector3();
+const xrAlignPoseQuaternion = new THREE.Quaternion();
+const xrAlignRigWorldQuaternion = new THREE.Quaternion();
+const xrShipLockPosition = new THREE.Vector3();
+const xrShipLockDelta = new THREE.Vector3();
+const xrFallbackForward = new THREE.Vector3();
 const xrWorldUp = new THREE.Vector3(0, 1, 0);
 const xrDesktopCameraSnapshot = {
   captured: false,
   position: new THREE.Vector3(),
   quaternion: new THREE.Quaternion(),
+  worldPosition: new THREE.Vector3(),
+  worldQuaternion: new THREE.Quaternion(),
   orbitTarget: new THREE.Vector3(),
 };
 const xrControllers = [];
@@ -504,6 +530,36 @@ const desktopWorld = createDesktopWorld({
   camera,
   canvas,
   onToolAction: handleWorldToolAction,
+  onDebugStatus: ({
+    level = "info",
+    message = "",
+    data = null,
+  } = {}) => {
+    const text = String(message || "").trim();
+    if (!text) return;
+    setStatus(`World debug: ${text}`, 3600);
+    if (level === "error") {
+      if (data) {
+        console.error("[WorldDebug]", text, data);
+        return;
+      }
+      console.error("[WorldDebug]", text);
+      return;
+    }
+    if (level === "warn") {
+      if (data) {
+        console.warn("[WorldDebug]", text, data);
+        return;
+      }
+      console.warn("[WorldDebug]", text);
+      return;
+    }
+    if (data) {
+      console.info("[WorldDebug]", text, data);
+      return;
+    }
+    console.info("[WorldDebug]", text);
+  },
 });
 
 function refreshWorldStatusPanels({ detail = "", payload = null } = {}) {
@@ -1095,6 +1151,11 @@ function enterWorldMode({ silent = false } = {}) {
 
   worldModeActive = true;
   syncWorldToggleButton();
+  if (!renderer.xr.isPresenting) {
+    // Keep desktop world camera placement deterministic by clearing any stale XR rig offset.
+    xrPlayerRig.position.set(0, 0, 0);
+    xrPlayerRig.rotation.set(0, 0, 0);
+  }
   desktopWorld.focusOnWorldCamera(orbit);
   scene.fog = new THREE.Fog(0x02050f, 20, 78);
   setWorldSelectionText(getWorldSelectionPrompt());
@@ -1507,7 +1568,22 @@ function captureXrDesktopCameraSnapshot() {
   xrDesktopCameraSnapshot.captured = true;
   xrDesktopCameraSnapshot.position.copy(camera.position);
   xrDesktopCameraSnapshot.quaternion.copy(camera.quaternion);
+  camera.getWorldPosition(xrDesktopCameraSnapshot.worldPosition);
+  camera.getWorldQuaternion(xrDesktopCameraSnapshot.worldQuaternion);
   xrDesktopCameraSnapshot.orbitTarget.copy(orbit.target);
+}
+
+function applyXrWorldFallbackOffset() {
+  if (!xrDesktopCameraSnapshot.captured) return;
+  camera.getWorldDirection(xrFallbackForward);
+  xrFallbackForward.y = 0;
+  if (xrFallbackForward.lengthSq() < 1e-8) {
+    xrFallbackForward.set(0, 0, -1);
+  } else {
+    xrFallbackForward.normalize();
+  }
+  xrDesktopCameraSnapshot.worldPosition.addScaledVector(xrFallbackForward, -XR_WORLD_FALLBACK_BACKOFF);
+  xrDesktopCameraSnapshot.worldPosition.y += XR_WORLD_FALLBACK_LIFT;
 }
 
 function restoreXrDesktopCameraSnapshot() {
@@ -1520,6 +1596,77 @@ function restoreXrDesktopCameraSnapshot() {
   orbit.target.copy(xrDesktopCameraSnapshot.orbitTarget);
   orbit.update();
   xrDesktopCameraSnapshot.captured = false;
+}
+
+function alignXrRigToDesktopCameraSnapshot(xrFrame = null) {
+  if (!xrDesktopCameraSnapshot.captured || !renderer.xr.isPresenting) return false;
+  let sampledPose = false;
+  if (xrFrame && typeof xrFrame.getViewerPose === "function") {
+    const referenceSpace = typeof renderer.xr.getReferenceSpace === "function"
+      ? renderer.xr.getReferenceSpace()
+      : null;
+    const viewerPose = referenceSpace ? xrFrame.getViewerPose(referenceSpace) : null;
+    const transform = viewerPose?.transform;
+    if (transform?.position && transform?.orientation) {
+      xrPlayerRig.updateMatrixWorld(true);
+      xrAlignCurrentHead.set(
+        transform.position.x,
+        transform.position.y,
+        transform.position.z,
+      );
+      xrAlignCurrentHead.applyMatrix4(xrPlayerRig.matrixWorld);
+
+      xrAlignPoseQuaternion.set(
+        transform.orientation.x,
+        transform.orientation.y,
+        transform.orientation.z,
+        transform.orientation.w,
+      );
+      xrPlayerRig.getWorldQuaternion(xrAlignRigWorldQuaternion);
+      xrAlignCurrentForward.set(0, 0, -1)
+        .applyQuaternion(xrAlignPoseQuaternion)
+        .applyQuaternion(xrAlignRigWorldQuaternion);
+      sampledPose = true;
+    }
+  }
+
+  if (!sampledPose) {
+    const xrCamera = renderer.xr.getCamera(camera);
+    if (!xrCamera) return false;
+    xrCamera.getWorldPosition(xrAlignCurrentHead);
+    xrCamera.getWorldDirection(xrAlignCurrentForward);
+  }
+
+  xrAlignCurrentForward.y = 0;
+  if (xrAlignCurrentForward.lengthSq() < 1e-8) {
+    xrAlignCurrentForward.set(0, 0, -1);
+  } else {
+    xrAlignCurrentForward.normalize();
+  }
+
+  xrAlignDesiredForward.set(0, 0, -1).applyQuaternion(xrDesktopCameraSnapshot.worldQuaternion);
+  xrAlignDesiredForward.y = 0;
+  if (xrAlignDesiredForward.lengthSq() < 1e-8) {
+    xrAlignDesiredForward.set(0, 0, -1);
+  } else {
+    xrAlignDesiredForward.normalize();
+  }
+
+  const yawDot = clamp(xrAlignCurrentForward.dot(xrAlignDesiredForward), -1, 1);
+  const crossY = (xrAlignCurrentForward.z * xrAlignDesiredForward.x)
+    - (xrAlignCurrentForward.x * xrAlignDesiredForward.z);
+  const yawDelta = Math.atan2(crossY, yawDot);
+
+  if (Math.abs(yawDelta) > 1e-5) {
+    xrPlayerRig.position.sub(xrAlignCurrentHead);
+    xrPlayerRig.position.applyAxisAngle(xrWorldUp, yawDelta);
+    xrPlayerRig.position.add(xrAlignCurrentHead);
+    xrPlayerRig.rotateY(yawDelta);
+  }
+
+  xrAlignOffset.copy(xrDesktopCameraSnapshot.worldPosition).sub(xrAlignCurrentHead);
+  xrPlayerRig.position.add(xrAlignOffset);
+  return true;
 }
 
 function resolveXrControllerForHand(handedness) {
@@ -1612,6 +1759,8 @@ function updateXrControllerRays() {
 
 function updateXrLocomotion(dt) {
   if (!renderer.xr.isPresenting || !worldModeActive) return;
+  if (XR_WORLD_SHIP_LOCK_ENABLED && desktopWorld.isCameraLockedToShip?.()) return;
+  if (xrStartupAlignFrames > 0) return;
 
   const leftController = resolveXrControllerForHand("left") || resolveAnyConnectedXrController();
   const rightController = resolveXrControllerForHand("right") || resolveAnyConnectedXrController(leftController);
@@ -1655,6 +1804,23 @@ function updateXrLocomotion(dt) {
     }
     xrPlayerRig.position.add(xrMoveDelta);
   }
+}
+
+function lockXrCameraToWorldShipCockpit() {
+  if (!XR_WORLD_SHIP_LOCK_ENABLED) return false;
+  if (!renderer.xr.isPresenting || !worldModeActive) return false;
+  if (!desktopWorld.isCameraLockedToShip?.()) return false;
+  if (typeof desktopWorld.getWorldShipCameraPose !== "function") return false;
+
+  const hasPose = desktopWorld.getWorldShipCameraPose(xrShipLockPosition, null, { xr: true });
+  if (!hasPose) return false;
+
+  const xrCamera = renderer.xr.getCamera(camera);
+  if (!xrCamera) return false;
+  xrCamera.getWorldPosition(xrHeadPosition);
+  xrShipLockDelta.copy(xrShipLockPosition).sub(xrHeadPosition);
+  xrPlayerRig.position.add(xrShipLockDelta);
+  return true;
 }
 
 function setupXrControllers() {
@@ -1760,11 +1926,21 @@ async function enterVrSession() {
   if (!navigator.xr?.requestSession) return;
 
   captureXrDesktopCameraSnapshot();
+  if (worldModeActive && !XR_WORLD_SHIP_LOCK_ENABLED) {
+    applyXrWorldFallbackOffset();
+  }
   try {
-    const session = await navigator.xr.requestSession("immersive-vr", {
-      requiredFeatures: ["local-floor"],
-      optionalFeatures: ["bounded-floor", "hand-tracking", "layers"],
-    });
+    const worldModeReferenceType = worldModeActive ? "local" : "local-floor";
+    renderer.xr.setReferenceSpaceType(worldModeReferenceType);
+    const sessionInit = worldModeActive
+      ? {
+        optionalFeatures: ["bounded-floor", "hand-tracking", "layers"],
+      }
+      : {
+        requiredFeatures: ["local-floor"],
+        optionalFeatures: ["bounded-floor", "hand-tracking", "layers"],
+      };
+    const session = await navigator.xr.requestSession("immersive-vr", sessionInit);
     await renderer.xr.setSession(session);
   } catch (error) {
     xrDesktopCameraSnapshot.captured = false;
@@ -1777,15 +1953,24 @@ async function enterVrSession() {
 function setupXrSessionHandlers() {
   renderer.xr.addEventListener("sessionstart", () => {
     orbit.enabled = false;
+    if (xrDesktopCameraSnapshot.captured) {
+      xrStartupAlignFrames = 90;
+    }
     if (worldModeActive) {
       setWorldSelectionText(getWorldSelectionPrompt());
     }
     updateXrControllerRays();
     syncXrEnterButtonState();
-    setStatus("Entered VR: left stick move, right stick turn, trigger selects nodes", 2200);
+    if (XR_WORLD_SHIP_LOCK_ENABLED && worldModeActive && desktopWorld.isCameraLockedToShip?.()) {
+      setStatus("Entered VR: cockpit lock active (head look only), trigger selects nodes", 2400);
+    } else {
+      setStatus("Entered VR: left stick move, right stick turn, trigger selects nodes", 2200);
+    }
   });
 
   renderer.xr.addEventListener("sessionend", () => {
+    xrStartupAlignFrames = 0;
+    renderer.xr.setReferenceSpaceType("local-floor");
     restoreXrDesktopCameraSnapshot();
     orbit.enabled = true;
     if (worldModeActive) {
@@ -2059,7 +2244,7 @@ function populateAvatarSelect() {
 function startRenderLoop() {
   const clock = new THREE.Clock();
 
-  renderer.setAnimationLoop(() => {
+  renderer.setAnimationLoop((_time, xrFrame) => {
     const dt = clock.getDelta();
 
     for (const [avatarId, runtime] of avatarRuntimeRegistry) {
@@ -2074,9 +2259,21 @@ function startRenderLoop() {
     }
 
     stageRig.update(dt);
+    desktopWorld.setXrPresentationActive?.(XR_WORLD_SHIP_LOCK_ENABLED && renderer.xr.isPresenting);
     const worldViewCamera = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
     const viewportHeightPx = canvas.clientHeight || stageEl?.clientHeight || window.innerHeight || 0;
     desktopWorld.update(dt, worldViewCamera, viewportHeightPx);
+    if (renderer.xr.isPresenting && xrStartupAlignFrames > 0) {
+      const aligned = alignXrRigToDesktopCameraSnapshot(xrFrame);
+      if (aligned) {
+        xrStartupAlignFrames = 0;
+      } else {
+        xrStartupAlignFrames -= 1;
+      }
+    }
+    if (XR_WORLD_SHIP_LOCK_ENABLED && renderer.xr.isPresenting) {
+      lockXrCameraToWorldShipCockpit();
+    }
     updateXrLocomotion(dt);
     updateXrControllerRays();
     if (!renderer.xr.isPresenting) {
