@@ -35,6 +35,7 @@ const btnWorldToggle = document.getElementById("btnWorldToggle");
 const btnVoice = document.getElementById("btnVoice");
 const btnElevenVoice = document.getElementById("btnElevenVoice");
 const worldActionEl = document.getElementById("worldAction");
+const worldScaleModeEl = document.getElementById("worldScaleMode");
 const worldSelectionEl = document.getElementById("worldSelection");
 const characterNameEl = document.getElementById("characterName");
 const characterBackgroundEl = document.getElementById("characterBackground");
@@ -58,6 +59,10 @@ renderer.xr.setReferenceSpaceType("local-floor");
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+const xrPlayerRig = new THREE.Group();
+xrPlayerRig.name = "xr-player-rig";
+scene.add(xrPlayerRig);
+xrPlayerRig.add(camera);
 
 const orbit = new OrbitControls(camera, canvas);
 orbit.enableDamping = true;
@@ -433,10 +438,16 @@ let wsThinkingClearTimer = null;
 let xrEnterButton = null;
 let xrSupportChecked = false;
 let xrImmersiveVrSupported = false;
+let xrControllersReady = false;
 
 const THINKING_TOKEN_PLACEHOLDER = "...";
 const THINKING_TEXT_MAX_LENGTH = 280;
 const THINKING_TEXT_HOLD_MS = 2200;
+const XR_RAY_LENGTH = 28;
+const XR_WORLD_PICK_DISTANCE = 48;
+const XR_MOVE_SPEED_MPS = 2.45;
+const XR_TURN_SPEED_RPS = 1.6;
+const XR_AXIS_DEADZONE = 0.2;
 
 const pointer = {
   x: 0,
@@ -445,6 +456,21 @@ const pointer = {
 const neutralPointer = { x: 0, y: 0 };
 const raycaster = new THREE.Raycaster();
 const pickPointer = new THREE.Vector2();
+const xrControllerTempMatrix = new THREE.Matrix4();
+const xrControllerOrigin = new THREE.Vector3();
+const xrControllerDirection = new THREE.Vector3();
+const xrMoveForward = new THREE.Vector3();
+const xrMoveRight = new THREE.Vector3();
+const xrMoveDelta = new THREE.Vector3();
+const xrHeadPosition = new THREE.Vector3();
+const xrWorldUp = new THREE.Vector3(0, 1, 0);
+const xrDesktopCameraSnapshot = {
+  captured: false,
+  position: new THREE.Vector3(),
+  quaternion: new THREE.Quaternion(),
+  orbitTarget: new THREE.Vector3(),
+};
+const xrControllers = [];
 
 const WORLD_ACTION_MODE_PREFERENCES = Object.freeze({
   list: ["file", "searching", "reading", "thinking", "idle"],
@@ -453,11 +479,23 @@ const WORLD_ACTION_MODE_PREFERENCES = Object.freeze({
   search: ["searching", "thinking", "reading", "idle"],
   delete: ["error", "thinking", "idle"],
 });
+const WORLD_SCALE_MODES = Object.freeze({
+  READABLE: "readable",
+  TRUE_SCALE: "true-scale",
+});
 
 function setWorldSelectionText(text) {
   if (worldSelectionEl) {
     worldSelectionEl.textContent = String(text || "").trim() || "No world node selected.";
   }
+}
+
+function getWorldSelectionPrompt(action = desktopWorld.getAction()) {
+  const actionLabel = String(action || "auto").toUpperCase();
+  if (renderer.xr.isPresenting) {
+    return `World active. Aim controller and pull trigger to run ${actionLabel}.`;
+  }
+  return `World active. Click a node to run ${actionLabel}.`;
 }
 
 const desktopWorld = createDesktopWorld({
@@ -965,6 +1003,16 @@ function normalizeWorldAction(value) {
   return DESKTOP_WORLD_ACTIONS.includes(value) ? value : "auto";
 }
 
+function normalizeWorldScaleMode(value) {
+  return value === WORLD_SCALE_MODES.TRUE_SCALE
+    ? WORLD_SCALE_MODES.TRUE_SCALE
+    : WORLD_SCALE_MODES.READABLE;
+}
+
+function formatWorldScaleModeLabel(mode) {
+  return mode === WORLD_SCALE_MODES.TRUE_SCALE ? "True Scale" : "Readable";
+}
+
 function resolveModeForWorldAction(action, runtime) {
   const availableModes = Array.isArray(runtime?.catalog?.modes)
     ? runtime.catalog.modes
@@ -1049,10 +1097,11 @@ function enterWorldMode({ silent = false } = {}) {
   syncWorldToggleButton();
   desktopWorld.focusOnWorldCamera(orbit);
   scene.fog = new THREE.Fog(0x02050f, 20, 78);
-  setWorldSelectionText(`World active. Click a node to run ${desktopWorld.getAction().toUpperCase()}.`);
+  setWorldSelectionText(getWorldSelectionPrompt());
+  updateXrControllerRays();
   refreshWorldStatusPanels();
   if (!silent) {
-    setStatus("Entered desktop world", 1700);
+    setStatus("Entered world: Earth orbit insertion, transfer trajectory locked to Jupiter", 2400);
   }
 }
 
@@ -1072,6 +1121,7 @@ function exitWorldMode({ silent = false } = {}) {
   applyScenePreset();
   syncWorldToggleButton();
   setWorldSelectionText("No world node selected.");
+  updateXrControllerRays();
   refreshWorldStatusPanels();
 
   if (!silent) {
@@ -1434,6 +1484,233 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 
+function createXrControllerRay() {
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, -1),
+  ]);
+  const material = new THREE.LineBasicMaterial({
+    color: 0xff7566,
+    transparent: true,
+    opacity: 0.86,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const line = new THREE.Line(geometry, material);
+  line.name = "xr-pointer-ray";
+  line.scale.z = XR_RAY_LENGTH;
+  line.visible = false;
+  return line;
+}
+
+function captureXrDesktopCameraSnapshot() {
+  xrDesktopCameraSnapshot.captured = true;
+  xrDesktopCameraSnapshot.position.copy(camera.position);
+  xrDesktopCameraSnapshot.quaternion.copy(camera.quaternion);
+  xrDesktopCameraSnapshot.orbitTarget.copy(orbit.target);
+}
+
+function restoreXrDesktopCameraSnapshot() {
+  xrPlayerRig.position.set(0, 0, 0);
+  xrPlayerRig.rotation.set(0, 0, 0);
+  if (!xrDesktopCameraSnapshot.captured) return;
+
+  camera.position.copy(xrDesktopCameraSnapshot.position);
+  camera.quaternion.copy(xrDesktopCameraSnapshot.quaternion);
+  orbit.target.copy(xrDesktopCameraSnapshot.orbitTarget);
+  orbit.update();
+  xrDesktopCameraSnapshot.captured = false;
+}
+
+function resolveXrControllerForHand(handedness) {
+  const exact = xrControllers.find((entry) => entry.connected && entry.handedness === handedness);
+  if (exact) return exact;
+
+  const fallbackIndex = handedness === "left" ? 0 : 1;
+  const fallback = xrControllers.find((entry) => entry.connected && entry.index === fallbackIndex);
+  return fallback || null;
+}
+
+function resolveAnyConnectedXrController(exclude = null) {
+  return xrControllers.find((entry) => entry.connected && entry !== exclude) || null;
+}
+
+function readXrControllerAxes(controllerState) {
+  const axes = controllerState?.inputSource?.gamepad?.axes;
+  if (!Array.isArray(axes) || axes.length < 2) {
+    return { x: 0, y: 0 };
+  }
+
+  const pairs = [];
+  for (let i = 0; i + 1 < axes.length; i += 2) {
+    const x = Number(axes[i]) || 0;
+    const y = Number(axes[i + 1]) || 0;
+    pairs.push({
+      x,
+      y,
+      magnitude: Math.hypot(x, y),
+    });
+  }
+
+  if (!pairs.length) {
+    return { x: 0, y: 0 };
+  }
+
+  let bestPair = pairs[0];
+  for (const pair of pairs) {
+    if (pair.magnitude > bestPair.magnitude) {
+      bestPair = pair;
+    }
+  }
+
+  // Quest controllers commonly expose sticks on axes[2]/axes[3].
+  if (bestPair.magnitude <= 0.0001 && pairs.length > 1) {
+    bestPair = pairs[pairs.length - 1];
+  }
+
+  return {
+    x: bestPair.x,
+    y: bestPair.y,
+  };
+}
+
+function applyXrAxisDeadzone(value) {
+  const magnitude = Math.abs(Number(value) || 0);
+  if (magnitude < XR_AXIS_DEADZONE) return 0;
+  const normalized = clamp((magnitude - XR_AXIS_DEADZONE) / (1 - XR_AXIS_DEADZONE), 0, 1);
+  return Math.sign(value) * normalized;
+}
+
+function getXrControllerRay(controller, origin, direction) {
+  if (!controller) return false;
+  origin.setFromMatrixPosition(controller.matrixWorld);
+  xrControllerTempMatrix.identity().extractRotation(controller.matrixWorld);
+  direction.set(0, 0, -1).applyMatrix4(xrControllerTempMatrix);
+  if (direction.lengthSq() < 1e-8) return false;
+  direction.normalize();
+  return true;
+}
+
+function pickWorldNodeFromXrController(controllerState) {
+  if (!worldModeActive || !desktopWorld.isActive()) return null;
+  if (!controllerState?.connected) return null;
+  if (!getXrControllerRay(controllerState.controller, xrControllerOrigin, xrControllerDirection)) {
+    return null;
+  }
+  return desktopWorld.pickWorldNodeFromRay(xrControllerOrigin, xrControllerDirection, {
+    maxDistance: XR_WORLD_PICK_DISTANCE,
+  });
+}
+
+function updateXrControllerRays() {
+  const shouldShow = renderer.xr.isPresenting && worldModeActive;
+  for (const state of xrControllers) {
+    if (!state?.ray) continue;
+    state.ray.visible = shouldShow && state.connected;
+  }
+}
+
+function updateXrLocomotion(dt) {
+  if (!renderer.xr.isPresenting || !worldModeActive) return;
+
+  const leftController = resolveXrControllerForHand("left") || resolveAnyConnectedXrController();
+  const rightController = resolveXrControllerForHand("right") || resolveAnyConnectedXrController(leftController);
+  const leftAxes = readXrControllerAxes(leftController);
+  const rightAxes = readXrControllerAxes(rightController);
+
+  const moveX = applyXrAxisDeadzone(leftAxes.x);
+  const moveY = applyXrAxisDeadzone(leftAxes.y);
+  const turnX = applyXrAxisDeadzone(rightAxes.x);
+  if (!moveX && !moveY && !turnX) return;
+
+  const xrCamera = renderer.xr.getCamera(camera);
+  if (!xrCamera) return;
+
+  if (turnX) {
+    xrCamera.getWorldPosition(xrHeadPosition);
+    const turnDelta = -turnX * XR_TURN_SPEED_RPS * dt;
+    xrPlayerRig.position.sub(xrHeadPosition);
+    xrPlayerRig.position.applyAxisAngle(xrWorldUp, turnDelta);
+    xrPlayerRig.position.add(xrHeadPosition);
+    xrPlayerRig.rotateY(turnDelta);
+  }
+
+  if (moveX || moveY) {
+    xrCamera.getWorldDirection(xrMoveForward);
+    xrMoveForward.y = 0;
+    if (xrMoveForward.lengthSq() < 1e-6) {
+      xrMoveForward.set(0, 0, -1);
+    } else {
+      xrMoveForward.normalize();
+    }
+    xrMoveRight.crossVectors(xrMoveForward, xrWorldUp).normalize();
+
+    const moveDistance = XR_MOVE_SPEED_MPS * dt;
+    xrMoveDelta.set(0, 0, 0);
+    if (moveY) {
+      xrMoveDelta.addScaledVector(xrMoveForward, -moveY * moveDistance);
+    }
+    if (moveX) {
+      xrMoveDelta.addScaledVector(xrMoveRight, moveX * moveDistance);
+    }
+    xrPlayerRig.position.add(xrMoveDelta);
+  }
+}
+
+function setupXrControllers() {
+  if (xrControllersReady) return;
+  xrControllersReady = true;
+
+  for (let index = 0; index < 2; index += 1) {
+    const controller = renderer.xr.getController(index);
+    const ray = createXrControllerRay();
+    controller.add(ray);
+    scene.add(controller);
+
+    const state = {
+      index,
+      controller,
+      ray,
+      connected: false,
+      handedness: "",
+      inputSource: null,
+    };
+    xrControllers.push(state);
+
+    controller.addEventListener("connected", (event) => {
+      const inputSource = event.data;
+      state.connected = true;
+      state.inputSource = inputSource || null;
+      state.handedness = String(inputSource?.handedness || "");
+
+      const rayColor = state.handedness === "left" ? 0x80b1ff : 0xff7e6f;
+      if (state.ray?.material?.color) {
+        state.ray.material.color.setHex(rayColor);
+      }
+      if (state.ray) {
+        state.ray.visible = renderer.xr.isPresenting && worldModeActive;
+      }
+    });
+
+    controller.addEventListener("disconnected", () => {
+      state.connected = false;
+      state.handedness = "";
+      state.inputSource = null;
+      if (state.ray) {
+        state.ray.visible = false;
+      }
+    });
+
+    controller.addEventListener("selectstart", () => {
+      if (!renderer.xr.isPresenting || !worldModeActive) return;
+      const payload = pickWorldNodeFromXrController(state);
+      if (!payload) {
+        setStatus("No world node targeted", 1200);
+      }
+    });
+  }
+}
+
 function ensureXrEnterButton() {
   if (!headerActionsEl) return null;
   if (xrEnterButton) return xrEnterButton;
@@ -1482,6 +1759,7 @@ async function enterVrSession() {
   if (!xrImmersiveVrSupported || renderer.xr.isPresenting) return;
   if (!navigator.xr?.requestSession) return;
 
+  captureXrDesktopCameraSnapshot();
   try {
     const session = await navigator.xr.requestSession("immersive-vr", {
       requiredFeatures: ["local-floor"],
@@ -1489,6 +1767,7 @@ async function enterVrSession() {
     });
     await renderer.xr.setSession(session);
   } catch (error) {
+    xrDesktopCameraSnapshot.captured = false;
     console.warn("Failed to enter VR session", error);
     setStatus("Could not enter VR", 2200);
     syncXrEnterButtonState();
@@ -1498,12 +1777,21 @@ async function enterVrSession() {
 function setupXrSessionHandlers() {
   renderer.xr.addEventListener("sessionstart", () => {
     orbit.enabled = false;
+    if (worldModeActive) {
+      setWorldSelectionText(getWorldSelectionPrompt());
+    }
+    updateXrControllerRays();
     syncXrEnterButtonState();
-    setStatus("Entered VR", 1600);
+    setStatus("Entered VR: left stick move, right stick turn, trigger selects nodes", 2200);
   });
 
   renderer.xr.addEventListener("sessionend", () => {
+    restoreXrDesktopCameraSnapshot();
     orbit.enabled = true;
+    if (worldModeActive) {
+      setWorldSelectionText(getWorldSelectionPrompt());
+    }
+    updateXrControllerRays();
     syncXrEnterButtonState();
     resize();
     setStatus("Exited VR", 1600);
@@ -1511,6 +1799,7 @@ function setupXrSessionHandlers() {
 }
 
 async function initWebXr() {
+  setupXrControllers();
   const button = ensureXrEnterButton();
   if (!button) return;
 
@@ -1597,11 +1886,21 @@ function installGlobalHandlers() {
     const normalized = normalizeWorldAction(worldActionEl.value);
     worldActionEl.value = normalized;
     desktopWorld.setAction(normalized);
-    refreshWorldStatusPanels({ detail: `World action: ${normalized.toUpperCase()}. Click a node.` });
+    refreshWorldStatusPanels({ detail: `World action: ${normalized.toUpperCase()}.` });
     if (worldModeActive) {
-      setWorldSelectionText(`World action: ${normalized.toUpperCase()}. Click a node.`);
+      setWorldSelectionText(getWorldSelectionPrompt(normalized));
       setStatus(`World action set to ${normalized}`, 1500);
     }
+  });
+
+  worldScaleModeEl?.addEventListener("change", () => {
+    const normalized = normalizeWorldScaleMode(worldScaleModeEl.value);
+    worldScaleModeEl.value = normalized;
+    desktopWorld.setScaleMode(normalized);
+
+    const label = formatWorldScaleModeLabel(normalized);
+    refreshWorldStatusPanels({ detail: `World scale: ${label.toUpperCase()}.` });
+    setStatus(`World scale set to ${label}`, 1700);
   });
 
   btnSaveCharacter?.addEventListener("click", () => {
@@ -1775,7 +2074,11 @@ function startRenderLoop() {
     }
 
     stageRig.update(dt);
-    desktopWorld.update(dt);
+    const worldViewCamera = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
+    const viewportHeightPx = canvas.clientHeight || stageEl?.clientHeight || window.innerHeight || 0;
+    desktopWorld.update(dt, worldViewCamera, viewportHeightPx);
+    updateXrLocomotion(dt);
+    updateXrControllerRays();
     if (!renderer.xr.isPresenting) {
       orbit.update();
     }
@@ -1803,10 +2106,15 @@ function init() {
   syncVoiceCredentialInputs();
   applyVoiceCredentialsToProviders();
   const normalizedWorldAction = normalizeWorldAction(worldActionEl?.value);
+  const normalizedWorldScaleMode = normalizeWorldScaleMode(worldScaleModeEl?.value);
   if (worldActionEl) {
     worldActionEl.value = normalizedWorldAction;
   }
+  if (worldScaleModeEl) {
+    worldScaleModeEl.value = normalizedWorldScaleMode;
+  }
   desktopWorld.setAction(normalizedWorldAction);
+  desktopWorld.setScaleMode(normalizedWorldScaleMode);
   syncWorldToggleButton();
   setWorldSelectionText("No world node selected.");
   refreshWorldStatusPanels();

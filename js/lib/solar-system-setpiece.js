@@ -8,6 +8,117 @@ import getAsteroidBelt from "../../solar-system/src/getAsteroidBelt.js";
 import getElipticLines from "../../solar-system/src/getElipticLines.js";
 
 const ROCK_OBJECT_FILES = ["Rock1.obj", "Rock2.obj", "Rock3.obj"];
+const KM_PER_AU = 149_597_870.7;
+const DAYS_PER_EARTH_YEAR = 365.256363004;
+const SIMULATION_YEARS_PER_SECOND = 0.06;
+const MIN_BODY_DIAMETER_PX = 16;
+const MIN_SUN_DIAMETER_PX = 24;
+const MIN_BODY_CAMERA_DISTANCE = 1e-5;
+const MAX_BODY_CAMERA_DISTANCE = 2e5;
+const FALLBACK_VERTICAL_FOV_RADIANS = THREE.MathUtils.degToRad(45);
+
+export const SOLAR_SCALE_MODES = Object.freeze({
+  READABLE: "readable",
+  TRUE_SCALE: "true-scale",
+});
+
+const PLANET_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    id: "mercury",
+    img: "mercury.png",
+    radiusKm: 2_439.7,
+    semiMajorAu: 0.387_098,
+    periodYears: 0.240_846_7,
+  }),
+  Object.freeze({
+    id: "venus",
+    img: "venus.png",
+    radiusKm: 6_051.8,
+    semiMajorAu: 0.723_332,
+    periodYears: 0.615_197_26,
+  }),
+  Object.freeze({
+    id: "earth",
+    img: "earth.png",
+    radiusKm: 6_371,
+    semiMajorAu: 1,
+    periodYears: 1,
+  }),
+  Object.freeze({
+    id: "mars",
+    img: "mars.png",
+    radiusKm: 3_389.5,
+    semiMajorAu: 1.523_679,
+    periodYears: 1.880_815_8,
+  }),
+  Object.freeze({
+    id: "jupiter",
+    img: "jupiter.png",
+    radiusKm: 69_911,
+    semiMajorAu: 5.2044,
+    periodYears: 11.862_615,
+  }),
+  Object.freeze({
+    id: "saturn",
+    img: "saturn.png",
+    radiusKm: 58_232,
+    semiMajorAu: 9.5826,
+    periodYears: 29.447_498,
+  }),
+  Object.freeze({
+    id: "uranus",
+    img: "uranus.png",
+    radiusKm: 25_362,
+    semiMajorAu: 19.2184,
+    periodYears: 84.016_846,
+  }),
+  Object.freeze({
+    id: "neptune",
+    img: "neptune.png",
+    radiusKm: 24_622,
+    semiMajorAu: 30.11,
+    periodYears: 164.791_32,
+  }),
+]);
+
+const MOON_DEFINITION = Object.freeze({
+  img: "moon.png",
+  radiusKm: 1_737.4,
+  distanceKm: 384_400,
+  periodDays: 27.321_661,
+});
+
+function kmToAu(km) {
+  return Number(km) / KM_PER_AU;
+}
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeScaleMode(value) {
+  return value === SOLAR_SCALE_MODES.TRUE_SCALE
+    ? SOLAR_SCALE_MODES.TRUE_SCALE
+    : SOLAR_SCALE_MODES.READABLE;
+}
+
+function resolvePerspectiveCamera(viewCamera) {
+  if (!viewCamera) return null;
+  if (viewCamera.isPerspectiveCamera) return viewCamera;
+  if (viewCamera.isArrayCamera && Array.isArray(viewCamera.cameras)) {
+    return viewCamera.cameras.find((camera) => camera?.isPerspectiveCamera) || null;
+  }
+  return null;
+}
+
+function resolveVerticalFovRadians(viewCamera) {
+  const perspectiveCamera = resolvePerspectiveCamera(viewCamera);
+  const fovDegrees = Number(perspectiveCamera?.fov);
+  if (Number.isFinite(fovDegrees) && fovDegrees > 0.01) {
+    return THREE.MathUtils.degToRad(fovDegrees);
+  }
+  return FALLBACK_VERTICAL_FOV_RADIANS;
+}
 
 function toRockUrl(fileName) {
   return new URL(`../../solar-system/rocks/${fileName}`, import.meta.url).href;
@@ -58,8 +169,12 @@ function loadRockLibrary() {
 }
 
 function createSaturnRing() {
+  const saturnDefinition = PLANET_DEFINITIONS.find((entry) => entry.id === "saturn");
+  const saturnRadiusAu = kmToAu(saturnDefinition?.radiusKm || 58_232);
+  const majorRadius = saturnRadiusAu * 1.95;
+  const tubeRadius = saturnRadiusAu * 0.42;
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.6, 0.15, 8, 64),
+    new THREE.TorusGeometry(majorRadius, tubeRadius, 8, 64),
     new THREE.MeshStandardMaterial({
       color: 0xc9c2b5,
       metalness: 0.4,
@@ -74,8 +189,12 @@ function createSaturnRing() {
 }
 
 function createUranusRing() {
+  const uranusDefinition = PLANET_DEFINITIONS.find((entry) => entry.id === "uranus");
+  const uranusRadiusAu = kmToAu(uranusDefinition?.radiusKm || 25_362);
+  const majorRadius = uranusRadiusAu * 1.8;
+  const tubeRadius = uranusRadiusAu * 0.08;
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.5, 0.05, 8, 64),
+    new THREE.TorusGeometry(majorRadius, tubeRadius, 8, 64),
     new THREE.MeshStandardMaterial({
       color: 0xd6d1c6,
       metalness: 0.28,
@@ -104,10 +223,17 @@ export function createSolarSystemSetpiece({
 
   const textureSeen = new Set();
   const anchorObjects = new Map();
+  const anchorRadiusByName = new Map();
+  const scalableBodies = new Map();
+  const ringBindings = [];
   const solarSystem = new THREE.Group();
   const updateTargets = [];
+  const cameraWorldPosition = new THREE.Vector3();
+  const bodyWorldPosition = new THREE.Vector3();
+  const ringScale = new THREE.Vector3();
   let disposed = false;
-  let time = 0;
+  let simulationYears = 0;
+  let scaleMode = SOLAR_SCALE_MODES.READABLE;
 
   solarSystem.userData.update = (t) => {
     for (const target of updateTargets) {
@@ -116,70 +242,131 @@ export function createSolarSystemSetpiece({
   };
   setpiece.add(solarSystem);
 
+  function registerScalableBody(
+    id,
+    mesh,
+    physicalRadius,
+    minDiameterPx = MIN_BODY_DIAMETER_PX,
+  ) {
+    if (!mesh?.isMesh) return;
+    const radius = Number(physicalRadius);
+    if (!Number.isFinite(radius) || radius <= 0) return;
+    scalableBodies.set(String(id || "").toLowerCase(), {
+      mesh,
+      physicalRadius: radius,
+      minDiameterPx: Math.max(1, Number(minDiameterPx) || MIN_BODY_DIAMETER_PX),
+    });
+  }
+
+  function applyTrueScale() {
+    for (const body of scalableBodies.values()) {
+      body.mesh.scale.setScalar(body.physicalRadius);
+    }
+    for (const ringBinding of ringBindings) {
+      if (!ringBinding?.mesh || !ringBinding?.baseScale) continue;
+      ringBinding.mesh.scale.copy(ringBinding.baseScale);
+    }
+  }
+
+  function applyReadableScale(viewCamera, viewportHeightPx) {
+    if (!viewCamera || !Number.isFinite(viewportHeightPx) || viewportHeightPx <= 0) return;
+    const cameraObject = resolvePerspectiveCamera(viewCamera) || viewCamera;
+    if (!cameraObject) return;
+
+    const vfov = resolveVerticalFovRadians(viewCamera);
+    const fovScale = Math.tan(vfov * 0.5);
+    if (!Number.isFinite(fovScale) || fovScale <= 0) return;
+    cameraObject.getWorldPosition(cameraWorldPosition);
+
+    for (const body of scalableBodies.values()) {
+      body.mesh.getWorldPosition(bodyWorldPosition);
+      const cameraDistance = clampNumber(
+        cameraWorldPosition.distanceTo(bodyWorldPosition),
+        MIN_BODY_CAMERA_DISTANCE,
+        MAX_BODY_CAMERA_DISTANCE,
+      );
+      const radiusFloorWorld = (body.minDiameterPx * fovScale * cameraDistance) / viewportHeightPx;
+      const renderRadius = Math.max(body.physicalRadius, radiusFloorWorld);
+      body.mesh.scale.setScalar(renderRadius);
+    }
+
+    for (const ringBinding of ringBindings) {
+      const parentBody = scalableBodies.get(ringBinding.parentId);
+      if (!parentBody || !ringBinding.mesh || !ringBinding.baseScale) continue;
+      const ratio = parentBody.mesh.scale.x / Math.max(parentBody.physicalRadius, MIN_BODY_CAMERA_DISTANCE);
+      ringScale.copy(ringBinding.baseScale).multiplyScalar(ratio);
+      ringBinding.mesh.scale.copy(ringScale);
+    }
+  }
+
   const sun = getSun();
+  const sunRadiusAu = kmToAu(696_340);
+  sun.scale.setScalar(sunRadiusAu);
   solarSystem.add(sun);
   updateTargets.push(sun);
   trackTextureMaps(sun, textureSink, textureSeen);
   anchorObjects.set("sun", sun);
+  anchorRadiusByName.set("sun", sunRadiusAu);
+  registerScalableBody("sun", sun, sunRadiusAu, MIN_SUN_DIAMETER_PX);
 
-  const mercury = getPlanet({ size: 0.1, distance: 1.25, img: "mercury.png" });
-  solarSystem.add(mercury);
-  updateTargets.push(mercury);
-  trackTextureMaps(mercury, textureSink, textureSeen);
-
-  const venus = getPlanet({ size: 0.2, distance: 1.65, img: "venus.png" });
-  solarSystem.add(venus);
-  updateTargets.push(venus);
-  trackTextureMaps(venus, textureSink, textureSeen);
-
-  const moon = getPlanet({ size: 0.075, distance: 0.4, img: "moon.png" });
-  const earth = getPlanet({ children: [moon], size: 0.225, distance: 2.0, img: "earth.png" });
-  solarSystem.add(earth);
-  updateTargets.push(earth);
-  trackTextureMaps(earth, textureSink, textureSeen);
-  anchorObjects.set("earth", getPlanetBody(earth) || earth);
-
-  const mars = getPlanet({ size: 0.15, distance: 2.25, img: "mars.png" });
-  solarSystem.add(mars);
-  updateTargets.push(mars);
-  trackTextureMaps(mars, textureSink, textureSeen);
-
-  const jupiter = getPlanet({ size: 0.4, distance: 2.75, img: "jupiter.png" });
-  solarSystem.add(jupiter);
-  updateTargets.push(jupiter);
-  trackTextureMaps(jupiter, textureSink, textureSeen);
-  anchorObjects.set("jupiter", getPlanetBody(jupiter) || jupiter);
-
-  const saturn = getPlanet({
-    children: [createSaturnRing()],
-    size: 0.35,
-    distance: 3.25,
-    img: "saturn.png",
+  const moon = getPlanet({
+    size: kmToAu(MOON_DEFINITION.radiusKm),
+    distance: kmToAu(MOON_DEFINITION.distanceKm),
+    img: MOON_DEFINITION.img,
+    orbitPeriodYears: MOON_DEFINITION.periodDays / DAYS_PER_EARTH_YEAR,
   });
-  solarSystem.add(saturn);
-  updateTargets.push(saturn);
-  trackTextureMaps(saturn, textureSink, textureSeen);
+  const moonMesh = moon?.children?.[moon.children.length - 1];
+  registerScalableBody("moon", moonMesh, kmToAu(MOON_DEFINITION.radiusKm), MIN_BODY_DIAMETER_PX);
 
-  const uranus = getPlanet({
-    children: [createUranusRing()],
-    size: 0.3,
-    distance: 3.75,
-    img: "uranus.png",
-  });
-  solarSystem.add(uranus);
-  updateTargets.push(uranus);
-  trackTextureMaps(uranus, textureSink, textureSeen);
+  for (const planetDefinition of PLANET_DEFINITIONS) {
+    const radiusAu = kmToAu(planetDefinition.radiusKm);
+    const orbitChildren = [];
+    let ringMesh = null;
+    if (planetDefinition.id === "earth") {
+      orbitChildren.push(moon);
+    }
+    if (planetDefinition.id === "saturn") {
+      ringMesh = createSaturnRing();
+      orbitChildren.push(ringMesh);
+    }
+    if (planetDefinition.id === "uranus") {
+      ringMesh = createUranusRing();
+      orbitChildren.push(ringMesh);
+    }
 
-  const neptune = getPlanet({ size: 0.3, distance: 4.25, img: "neptune.png" });
-  solarSystem.add(neptune);
-  updateTargets.push(neptune);
-  trackTextureMaps(neptune, textureSink, textureSeen);
+    const orbitGroup = getPlanet({
+      children: orbitChildren,
+      size: radiusAu,
+      distance: planetDefinition.semiMajorAu,
+      img: planetDefinition.img,
+      orbitPeriodYears: planetDefinition.periodYears,
+    });
+
+    solarSystem.add(orbitGroup);
+    updateTargets.push(orbitGroup);
+    trackTextureMaps(orbitGroup, textureSink, textureSeen);
+
+    const planetMesh = orbitGroup?.children?.[orbitGroup.children.length - 1];
+    registerScalableBody(planetDefinition.id, planetMesh, radiusAu, MIN_BODY_DIAMETER_PX);
+    if (ringMesh?.isMesh) {
+      ringBindings.push({
+        mesh: ringMesh,
+        parentId: planetDefinition.id,
+        baseScale: ringMesh.scale.clone(),
+      });
+    }
+
+    const body = getPlanetBody(orbitGroup) || orbitGroup;
+    anchorObjects.set(planetDefinition.id, body);
+    anchorRadiusByName.set(planetDefinition.id, radiusAu);
+  }
 
   const orbitLines = getElipticLines({
     resolution: new THREE.Vector2(
       window.innerWidth || 1280,
       window.innerHeight || 720,
     ),
+    distances: PLANET_DEFINITIONS.map((entry) => entry.semiMajorAu),
   });
   orbitLines.traverse((node) => {
     if (node?.material && "opacity" in node.material) {
@@ -227,7 +414,13 @@ export function createSolarSystemSetpiece({
 
   loadRockLibrary().then((meshes) => {
     if (disposed || !meshes.length) return;
-    const asteroidBelt = getAsteroidBelt(meshes);
+    const asteroidBelt = getAsteroidBelt(meshes, {
+      distanceMin: 2.2,
+      distanceMax: 3.2,
+      sizeMin: kmToAu(80),
+      sizeMax: kmToAu(420),
+      orbitPeriodYears: 4.8,
+    });
     asteroidBelt.userData.update = (t) => {
       for (const child of asteroidBelt.children) {
         child.userData.update?.(t);
@@ -237,11 +430,15 @@ export function createSolarSystemSetpiece({
     updateTargets.push(asteroidBelt);
   });
 
-  function update(dt = 0.016) {
-    time += dt * 0.22;
-    solarSystem.userData.update?.(time);
-    setpiece.rotation.y += dt * 0.03;
-    setpiece.rotation.z = Math.sin(time * 0.6) * 0.015;
+  function update(dt = 0.016, viewCamera = null, viewportHeightPx = 0) {
+    simulationYears += dt * SIMULATION_YEARS_PER_SECOND;
+    solarSystem.userData.update?.(simulationYears);
+
+    if (scaleMode === SOLAR_SCALE_MODES.TRUE_SCALE) {
+      applyTrueScale();
+      return;
+    }
+    applyReadableScale(viewCamera, viewportHeightPx);
   }
 
   function dispose() {
@@ -256,10 +453,33 @@ export function createSolarSystemSetpiece({
     return target;
   }
 
+  function getWorldBodyRadius(name) {
+    const key = String(name || "").toLowerCase();
+    const radius = anchorRadiusByName.get(key);
+    if (!Number.isFinite(radius)) return null;
+    return radius * setpiece.scale.x;
+  }
+
+  function setScaleMode(mode) {
+    const normalized = normalizeScaleMode(mode);
+    if (normalized === scaleMode) return;
+    scaleMode = normalized;
+    if (scaleMode === SOLAR_SCALE_MODES.TRUE_SCALE) {
+      applyTrueScale();
+    }
+  }
+
+  function getScaleMode() {
+    return scaleMode;
+  }
+
   return {
     group: setpiece,
     update,
     dispose,
     getWorldAnchor,
+    getWorldBodyRadius,
+    setScaleMode,
+    getScaleMode,
   };
 }

@@ -1,5 +1,6 @@
 import { clamp, safeDisposeObject3D } from "./utils.js";
 import { createSolarSystemSetpiece } from "./solar-system-setpiece.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export const DESKTOP_WORLD_ACTIONS = Object.freeze([
   "auto",
@@ -9,6 +10,12 @@ export const DESKTOP_WORLD_ACTIONS = Object.freeze([
   "search",
   "delete",
 ]);
+
+const DEFAULT_SCELD_MODEL_URLS = Object.freeze([
+  new URL(/* @vite-ignore */ "../../assets/models/sceld.glb", import.meta.url).href,
+  new URL(/* @vite-ignore */ "../../assets/models/sceld.gltf", import.meta.url).href,
+]);
+const SCELD_MODEL_TARGET_LONGEST_DIMENSION = 3.45;
 
 const DIRECTORY_STRUCTURE = Object.freeze({
   name: "workspace",
@@ -509,61 +516,248 @@ function createTerminalScreenTexture(THREE, {
   };
 }
 
+function resolveSceldModelUrls() {
+  const urls = [];
+  const runtimeUrl = typeof window !== "undefined"
+    ? String(window.SCELD_MODEL_URL || "").trim()
+    : "";
+  if (runtimeUrl) {
+    urls.push(runtimeUrl);
+  }
+  for (const url of DEFAULT_SCELD_MODEL_URLS) {
+    if (!urls.includes(url)) {
+      urls.push(url);
+    }
+  }
+  return urls;
+}
+
+function trackMaterialTextures(root, textureSink, seen = new Set()) {
+  if (!root || !Array.isArray(textureSink)) return;
+  root.traverse((node) => {
+    const materials = Array.isArray(node?.material) ? node.material : [node?.material];
+    for (const material of materials) {
+      if (!material) continue;
+      for (const key of Object.keys(material)) {
+        const value = material[key];
+        if (!value?.isTexture || seen.has(value)) continue;
+        seen.add(value);
+        textureSink.push(value);
+      }
+    }
+  });
+}
+
+function prepareImportedCockpitModel(THREE, modelRoot) {
+  if (!modelRoot) return;
+  modelRoot.traverse((node) => {
+    if (!node?.isMesh) return;
+    node.castShadow = false;
+    node.receiveShadow = false;
+    node.frustumCulled = false;
+
+    const materials = Array.isArray(node.material) ? node.material : [node.material];
+    for (const material of materials) {
+      if (!material) continue;
+      const materialName = String(material.name || "").toLowerCase();
+      const isGlass = materialName.includes("glass") || materialName.includes("window");
+      if (isGlass) {
+        material.transparent = true;
+        material.opacity = clamp(Number(material.opacity) || 0.5, 0.08, 0.65);
+        if ("depthWrite" in material) material.depthWrite = false;
+        if ("side" in material) material.side = THREE.DoubleSide;
+      }
+    }
+  });
+}
+
+function normalizeImportedCockpitModel(THREE, modelRoot) {
+  const bounds = new THREE.Box3().setFromObject(modelRoot);
+  if (bounds.isEmpty()) return;
+
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  bounds.getSize(size);
+  bounds.getCenter(center);
+  const longestDimension = Math.max(size.x, size.y, size.z);
+  if (Number.isFinite(longestDimension) && longestDimension > 1e-6) {
+    modelRoot.scale.multiplyScalar(SCELD_MODEL_TARGET_LONGEST_DIMENSION / longestDimension);
+  }
+
+  bounds.setFromObject(modelRoot);
+  bounds.getSize(size);
+  bounds.getCenter(center);
+  modelRoot.position.sub(center);
+  modelRoot.position.y -= size.y * 0.07;
+  modelRoot.position.z -= size.z * 0.24;
+}
+
+function loadImportedCockpitModel({
+  THREE,
+  cockpitRig,
+  disposableTextures,
+} = {}) {
+  if (!THREE || !cockpitRig) {
+    return () => {};
+  }
+
+  const candidateUrls = resolveSceldModelUrls();
+  if (!candidateUrls.length) {
+    return () => {};
+  }
+
+  const loader = new GLTFLoader();
+  const fallbackChildren = [...cockpitRig.children];
+  const trackedTextureSet = new Set();
+  let cancelled = false;
+  let fallbackDisposed = false;
+
+  function disposeFallback() {
+    if (fallbackDisposed) return;
+    fallbackDisposed = true;
+    for (const child of fallbackChildren) {
+      if (!child) continue;
+      if (child.parent === cockpitRig) {
+        cockpitRig.remove(child);
+      }
+      safeDisposeObject3D(child);
+    }
+  }
+
+  function tryLoad(index) {
+    if (cancelled || index >= candidateUrls.length) return;
+    const url = candidateUrls[index];
+    loader.load(
+      url,
+      (gltf) => {
+        if (cancelled) return;
+        const modelRoot = gltf?.scene || gltf?.scenes?.[0] || null;
+        if (!modelRoot) {
+          tryLoad(index + 1);
+          return;
+        }
+
+        prepareImportedCockpitModel(THREE, modelRoot);
+        normalizeImportedCockpitModel(THREE, modelRoot);
+        trackMaterialTextures(modelRoot, disposableTextures, trackedTextureSet);
+        disposeFallback();
+        cockpitRig.add(modelRoot);
+        cockpitRig.userData.modelSource = "imported";
+        cockpitRig.userData.modelUrl = url;
+        cockpitRig.userData.modelStatus = "loaded";
+      },
+      undefined,
+      () => {
+        if (cancelled) return;
+        tryLoad(index + 1);
+      },
+    );
+  }
+
+  tryLoad(0);
+  return () => {
+    cancelled = true;
+  };
+}
+
 function createCockpitRig(THREE) {
   const cockpit = new THREE.Group();
-  cockpit.name = "world-cockpit-rig";
+  cockpit.name = "world-sceld-cockpit-rig";
+  cockpit.userData.modelSource = "procedural";
+  cockpit.userData.modelStatus = "fallback";
 
   const hullMat = new THREE.MeshBasicMaterial({
-    color: 0x111215,
+    color: 0x101216,
     transparent: true,
-    opacity: 0.96,
+    opacity: 0.98,
     depthWrite: false,
     toneMapped: false,
   });
   const trimMat = new THREE.MeshBasicMaterial({
-    color: 0x70767f,
+    color: 0x8e96a3,
     transparent: true,
-    opacity: 0.88,
+    opacity: 0.9,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const accentMat = new THREE.MeshBasicMaterial({
+    color: 0x4f5f79,
+    transparent: true,
+    opacity: 0.82,
     depthWrite: false,
     toneMapped: false,
   });
   const glassMat = new THREE.MeshBasicMaterial({
-    color: 0x5a78a2,
+    color: 0x6f8ec0,
     transparent: true,
-    opacity: 0.08,
+    opacity: 0.11,
     depthWrite: false,
     toneMapped: false,
   });
 
-  const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.35, 0.7), hullMat);
-  dashboard.position.set(0, -0.95, -1.15);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.24, 3.4), hullMat);
+  deck.position.set(0, -1.18, -0.7);
+  cockpit.add(deck);
+
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.18, 2.9), hullMat);
+  roof.position.set(0, 1.02, -0.72);
+  cockpit.add(roof);
+
+  const leftHull = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.86, 3.0), hullMat);
+  leftHull.position.set(-1.56, -0.03, -0.7);
+  cockpit.add(leftHull);
+
+  const rightHull = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.86, 3.0), hullMat);
+  rightHull.position.set(1.56, -0.03, -0.7);
+  cockpit.add(rightHull);
+
+  const rearBulkhead = new THREE.Mesh(new THREE.BoxGeometry(2.84, 1.9, 0.18), hullMat);
+  rearBulkhead.position.set(0, -0.03, 0.82);
+  cockpit.add(rearBulkhead);
+
+  const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.62, 0.34, 0.85), hullMat);
+  dashboard.position.set(0, -0.96, -1.2);
   cockpit.add(dashboard);
 
-  const topFrame = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.09, 0.12), hullMat);
-  topFrame.position.set(0, 0.72, -1.05);
+  const topFrame = new THREE.Mesh(new THREE.BoxGeometry(2.34, 0.1, 0.14), hullMat);
+  topFrame.position.set(0, 0.78, -1.1);
   cockpit.add(topFrame);
 
-  const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.48, 0.12), hullMat);
-  leftFrame.position.set(-1.1, -0.02, -1.06);
+  const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.56, 0.14), hullMat);
+  leftFrame.position.set(-1.16, -0.03, -1.08);
   cockpit.add(leftFrame);
 
-  const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.48, 0.12), hullMat);
-  rightFrame.position.set(1.1, -0.02, -1.06);
+  const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.56, 0.14), hullMat);
+  rightFrame.position.set(1.16, -0.03, -1.08);
   cockpit.add(rightFrame);
 
-  const leftSupport = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.2, 0.08), trimMat);
-  leftSupport.position.set(-0.62, -0.25, -1.04);
-  leftSupport.rotation.z = 0.18;
+  const leftSupport = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.26, 0.08), trimMat);
+  leftSupport.position.set(-0.68, -0.23, -1.04);
+  leftSupport.rotation.z = 0.2;
   cockpit.add(leftSupport);
 
-  const rightSupport = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.2, 0.08), trimMat);
-  rightSupport.position.set(0.62, -0.25, -1.04);
-  rightSupport.rotation.z = -0.18;
+  const rightSupport = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.26, 0.08), trimMat);
+  rightSupport.position.set(0.68, -0.23, -1.04);
+  rightSupport.rotation.z = -0.2;
   cockpit.add(rightSupport);
 
-  const canopyGlass = new THREE.Mesh(new THREE.PlaneGeometry(1.95, 1.22), glassMat);
+  const frontPlate = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.12, 0.12), accentMat);
+  frontPlate.position.set(0, -0.48, -1.12);
+  cockpit.add(frontPlate);
+
+  const canopyGlass = new THREE.Mesh(new THREE.PlaneGeometry(2.02, 1.24), glassMat);
   canopyGlass.position.set(0, 0.02, -1.12);
   cockpit.add(canopyGlass);
+
+  const leftWindow = new THREE.Mesh(new THREE.PlaneGeometry(1.52, 0.9), glassMat);
+  leftWindow.position.set(-1.02, 0, -0.48);
+  leftWindow.rotation.y = 0.63;
+  cockpit.add(leftWindow);
+
+  const rightWindow = new THREE.Mesh(new THREE.PlaneGeometry(1.52, 0.9), glassMat);
+  rightWindow.position.set(1.02, 0, -0.48);
+  rightWindow.rotation.y = -0.63;
+  cockpit.add(rightWindow);
 
   return cockpit;
 }
@@ -700,36 +894,6 @@ function createEnvironment(
     });
   }
 
-  const farPlanet = new THREE.Mesh(
-    new THREE.SphereGeometry(1.55, 42, 42),
-    new THREE.MeshStandardMaterial({
-      color: 0xc6c0b5,
-      roughness: 0.62,
-      metalness: 0.08,
-      emissive: 0x2b2018,
-      emissiveIntensity: 0.2,
-    }),
-  );
-  farPlanet.position.set(8.8, 3.2, -16.8);
-  root.add(farPlanet);
-  animatedObjectRefs.push({ kind: "rotateY", mesh: farPlanet, speed: 0.08 });
-
-  const farPlanetRing = new THREE.Mesh(
-    new THREE.TorusGeometry(2.42, 0.07, 24, 120),
-    new THREE.MeshStandardMaterial({
-      color: 0x8f887d,
-      roughness: 0.28,
-      metalness: 0.48,
-      emissive: 0x2a2621,
-      emissiveIntensity: 0.12,
-      transparent: true,
-      opacity: 0.56,
-    }),
-  );
-  farPlanetRing.rotation.x = Math.PI / 2.7;
-  farPlanet.add(farPlanetRing);
-  animatedObjectRefs.push({ kind: "rotateZ", mesh: farPlanetRing, speed: 0.18 });
-
   const monitorFrame = new THREE.Mesh(
     new THREE.BoxGeometry(6.2, 3.4, 0.22),
     new THREE.MeshStandardMaterial({
@@ -762,7 +926,7 @@ function createEnvironment(
     root.add(solarSetpiece.group);
     animatedObjectRefs.push({
       kind: "customUpdate",
-      update: (dt) => solarSetpiece.update(dt),
+      update: (dt, viewCamera, viewportHeightPx) => solarSetpiece.update(dt, viewCamera, viewportHeightPx),
     });
   }
 
@@ -854,6 +1018,15 @@ function createEnvironment(
     setPanelText,
     getWorldAnchor(name, target) {
       return solarSetpiece?.getWorldAnchor?.(name, target) || null;
+    },
+    getWorldBodyRadius(name) {
+      return solarSetpiece?.getWorldBodyRadius?.(name) || null;
+    },
+    setScaleMode(mode) {
+      solarSetpiece?.setScaleMode?.(mode);
+    },
+    getScaleMode() {
+      return solarSetpiece?.getScaleMode?.() || "readable";
     },
     dispose() {
       solarSetpiece?.dispose?.();
@@ -1055,12 +1228,15 @@ export function createDesktopWorld({
   onToolAction,
 } = {}) {
   const CAMERA_TRAVEL_DURATION_SECONDS = 3 * 60 * 60;
-  const CAMERA_EARTH_STANDOFF = 0.42;
-  const CAMERA_JUPITER_STANDOFF = 8.2;
-  const CAMERA_EARTH_SIDE_STANDOFF = 0.09;
-  const CAMERA_JUPITER_SIDE_STANDOFF = 1.55;
-  const CAMERA_LOW_ALTITUDE_OFFSET = 0.04;
-  const CAMERA_TARGET_FORWARD_OFFSET = 0.68;
+  const WORLD_CAMERA_FOV_DEGREES = 38;
+  const CAMERA_ROUTE_STANDOFF_RATIO_EARTH = 0.02;
+  const CAMERA_ROUTE_STANDOFF_RATIO_JUPITER = 0.08;
+  const CAMERA_ROUTE_SIDE_RATIO_EARTH = 0.015;
+  const CAMERA_ROUTE_SIDE_RATIO_JUPITER = 0.05;
+  const CAMERA_ROUTE_ALTITUDE_RATIO = 0.003;
+  const CAMERA_ROUTE_TARGET_RATIO = 0.01;
+  const CAMERA_ROUTE_TRANSFER_LINE_OPACITY = 0.52;
+  const CAMERA_ROUTE_MARKER_RADIUS = 0.026;
 
   const root = new THREE.Group();
   root.visible = false;
@@ -1074,6 +1250,11 @@ export function createDesktopWorld({
   const animatedLights = [];
   const animatedObjects = [];
   const disposableTextures = [];
+  const cancelCockpitModelLoad = loadImportedCockpitModel({
+    THREE,
+    cockpitRig,
+    disposableTextures,
+  });
   const environment = createEnvironment(
     THREE,
     root,
@@ -1104,6 +1285,7 @@ export function createDesktopWorld({
   const graph = createDirectoryGraph(THREE, directoryGroup);
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
+  const rayDirection = new THREE.Vector3();
   const rootEntryId = graph.entries[0]?.id || "";
   let active = false;
   let selectedNodeId = rootEntryId;
@@ -1115,6 +1297,7 @@ export function createDesktopWorld({
   const cameraTravel = {
     active: false,
     elapsed: 0,
+    progress: 0,
     duration: CAMERA_TRAVEL_DURATION_SECONDS,
     startPos: new THREE.Vector3(),
     endPos: new THREE.Vector3(),
@@ -1128,6 +1311,36 @@ export function createDesktopWorld({
   const travelForward = new THREE.Vector3();
   const travelSide = new THREE.Vector3();
   const worldUp = new THREE.Vector3(0, 1, 0);
+  const defaultCameraFov = Number(camera?.fov) > 0 ? Number(camera.fov) : 45;
+  const transferMarkerPosition = new THREE.Vector3();
+  const transferPathGeometry = new THREE.BufferGeometry();
+  const transferPathPoints = new Float32Array(6);
+  transferPathGeometry.setAttribute("position", new THREE.BufferAttribute(transferPathPoints, 3));
+  const transferPathMaterial = new THREE.LineBasicMaterial({
+    color: 0xff8f7a,
+    transparent: true,
+    opacity: CAMERA_ROUTE_TRANSFER_LINE_OPACITY,
+    toneMapped: false,
+    depthWrite: false,
+  });
+  const transferPathLine = new THREE.Line(transferPathGeometry, transferPathMaterial);
+  transferPathLine.name = "earth-jupiter-transfer-line";
+  transferPathLine.visible = false;
+  root.add(transferPathLine);
+
+  const transferMarker = new THREE.Mesh(
+    new THREE.SphereGeometry(CAMERA_ROUTE_MARKER_RADIUS, 12, 10),
+    new THREE.MeshBasicMaterial({
+      color: 0xffb39e,
+      transparent: true,
+      opacity: 0.86,
+      toneMapped: false,
+      depthWrite: false,
+    }),
+  );
+  transferMarker.name = "earth-jupiter-transfer-marker";
+  transferMarker.visible = false;
+  root.add(transferMarker);
 
   function buildContextSet(selectedId) {
     const context = new Set();
@@ -1241,6 +1454,51 @@ export function createDesktopWorld({
     return currentAction;
   }
 
+  function setScaleMode(mode) {
+    environment?.setScaleMode?.(mode);
+  }
+
+  function getScaleMode() {
+    return environment?.getScaleMode?.() || "readable";
+  }
+
+  function setWorldCameraFov(fovDegrees) {
+    const nextFov = Number(fovDegrees);
+    if (!Number.isFinite(nextFov) || nextFov <= 0.1) return;
+    if (Math.abs((Number(camera?.fov) || 0) - nextFov) <= 1e-4) return;
+    camera.fov = nextFov;
+    camera.updateProjectionMatrix();
+  }
+
+  function updateTransferTrajectory(progress = 0) {
+    const earthAnchor = environment?.getWorldAnchor?.("earth", worldAnchorEarth);
+    const jupiterAnchor = environment?.getWorldAnchor?.("jupiter", worldAnchorJupiter);
+    if (!earthAnchor || !jupiterAnchor) {
+      transferPathLine.visible = false;
+      transferMarker.visible = false;
+      return;
+    }
+
+    transferPathPoints[0] = earthAnchor.x;
+    transferPathPoints[1] = earthAnchor.y;
+    transferPathPoints[2] = earthAnchor.z;
+    transferPathPoints[3] = jupiterAnchor.x;
+    transferPathPoints[4] = jupiterAnchor.y;
+    transferPathPoints[5] = jupiterAnchor.z;
+    transferPathGeometry.attributes.position.needsUpdate = true;
+    transferPathGeometry.computeBoundingSphere();
+
+    transferMarkerPosition.lerpVectors(
+      earthAnchor,
+      jupiterAnchor,
+      clamp(progress, 0, 1),
+    );
+    transferMarker.position.copy(transferMarkerPosition);
+
+    transferPathLine.visible = active;
+    transferMarker.visible = active;
+  }
+
   function setStatusPanels({ left = null, right = null } = {}) {
     if (left) environment?.setPanelText?.("left", left);
     if (right) environment?.setPanelText?.("right", right);
@@ -1250,6 +1508,7 @@ export function createDesktopWorld({
     active = Boolean(nextVisible);
     root.visible = active;
     cockpitRig.visible = active;
+    setWorldCameraFov(active ? WORLD_CAMERA_FOV_DEGREES : defaultCameraFov);
     if (worldOrbit) {
       worldOrbit.enableRotate = !active;
       worldOrbit.enablePan = !active;
@@ -1257,7 +1516,12 @@ export function createDesktopWorld({
     }
     if (!active) {
       cameraTravel.active = false;
+      cameraTravel.progress = 0;
+      transferPathLine.visible = false;
+      transferMarker.visible = false;
+      return;
     }
+    updateTransferTrajectory(cameraTravel.progress);
   }
 
   function attachAvatar(avatarId, avatarGroup, { yOffset = 0 } = {}) {
@@ -1289,16 +1553,7 @@ export function createDesktopWorld({
     return { avatarId, avatarGroup };
   }
 
-  function pickWorldNode(clientX, clientY) {
-    if (!active || !canvas || !camera) return null;
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return null;
-
-    pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-    pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(pointer, camera);
-
-    const hits = raycaster.intersectObjects(graph.pickables, false);
+  function pickWorldNodeFromHits(hits) {
     const hit = hits[0];
     if (!hit?.object?.userData?.worldNodeId) return null;
 
@@ -1323,11 +1578,76 @@ export function createDesktopWorld({
     return payload;
   }
 
+  function pickWorldNode(clientX, clientY) {
+    if (!active || !canvas || !camera) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+
+    pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+
+    const hits = raycaster.intersectObjects(graph.pickables, false);
+    return pickWorldNodeFromHits(hits);
+  }
+
+  function pickWorldNodeFromRay(origin, direction, { maxDistance = Infinity } = {}) {
+    if (!active || !origin || !direction) return null;
+    rayDirection.copy(direction);
+    if (rayDirection.lengthSq() < 1e-8) return null;
+    rayDirection.normalize();
+
+    const previousFar = raycaster.far;
+    if (Number.isFinite(maxDistance) && maxDistance > 0) {
+      raycaster.far = maxDistance;
+    } else {
+      raycaster.far = Infinity;
+    }
+    raycaster.set(origin, rayDirection);
+    const hits = raycaster.intersectObjects(graph.pickables, false);
+    raycaster.far = previousFar;
+
+    return pickWorldNodeFromHits(hits);
+  }
+
   function startEarthToJupiterCameraTravel() {
     root.updateMatrixWorld(true);
     const earthAnchor = environment?.getWorldAnchor?.("earth", worldAnchorEarth);
     const jupiterAnchor = environment?.getWorldAnchor?.("jupiter", worldAnchorJupiter);
     if (!earthAnchor || !jupiterAnchor) return false;
+    const routeDistance = Math.max(1e-5, earthAnchor.distanceTo(jupiterAnchor));
+    const earthRadius = Number(environment?.getWorldBodyRadius?.("earth")) || 0;
+    const jupiterRadius = Number(environment?.getWorldBodyRadius?.("jupiter")) || 0;
+    const earthStandoff = Math.max(
+      routeDistance * CAMERA_ROUTE_STANDOFF_RATIO_EARTH,
+      earthRadius * 24,
+      0.03,
+    );
+    const jupiterStandoff = Math.max(
+      routeDistance * CAMERA_ROUTE_STANDOFF_RATIO_JUPITER,
+      jupiterRadius * 18,
+      0.08,
+    );
+    const earthSideStandoff = Math.max(
+      routeDistance * CAMERA_ROUTE_SIDE_RATIO_EARTH,
+      earthRadius * 9,
+      0.015,
+    );
+    const jupiterSideStandoff = Math.max(
+      routeDistance * CAMERA_ROUTE_SIDE_RATIO_JUPITER,
+      jupiterRadius * 8,
+      0.05,
+    );
+    const lowAltitudeOffset = Math.max(
+      routeDistance * CAMERA_ROUTE_ALTITUDE_RATIO,
+      earthRadius * 3.5,
+      0.01,
+    );
+    const targetForwardOffset = Math.max(
+      routeDistance * CAMERA_ROUTE_TARGET_RATIO,
+      earthRadius * 12,
+      0.02,
+    );
 
     travelForward.copy(jupiterAnchor).sub(earthAnchor);
     travelForward.y = 0;
@@ -1344,23 +1664,25 @@ export function createDesktopWorld({
       travelSide.normalize();
     }
 
-    cameraTravel.startTarget.copy(earthAnchor).addScaledVector(travelForward, CAMERA_TARGET_FORWARD_OFFSET);
-    cameraTravel.startTarget.y += CAMERA_LOW_ALTITUDE_OFFSET;
-    cameraTravel.endTarget.copy(jupiterAnchor).addScaledVector(travelForward, CAMERA_TARGET_FORWARD_OFFSET * 0.8);
-    cameraTravel.endTarget.y += CAMERA_LOW_ALTITUDE_OFFSET * 0.9;
+    cameraTravel.startTarget.copy(earthAnchor).addScaledVector(travelForward, targetForwardOffset);
+    cameraTravel.startTarget.y += lowAltitudeOffset;
+    cameraTravel.endTarget.copy(jupiterAnchor).addScaledVector(travelForward, targetForwardOffset * 0.8);
+    cameraTravel.endTarget.y += lowAltitudeOffset * 0.9;
 
     cameraTravel.startPos.copy(earthAnchor);
-    cameraTravel.startPos.addScaledVector(travelForward, -CAMERA_EARTH_STANDOFF);
-    cameraTravel.startPos.addScaledVector(travelSide, -CAMERA_EARTH_SIDE_STANDOFF);
-    cameraTravel.startPos.y += CAMERA_LOW_ALTITUDE_OFFSET;
+    cameraTravel.startPos.addScaledVector(travelForward, -earthStandoff);
+    cameraTravel.startPos.addScaledVector(travelSide, -earthSideStandoff);
+    cameraTravel.startPos.y += lowAltitudeOffset;
 
     cameraTravel.endPos.copy(jupiterAnchor);
-    cameraTravel.endPos.addScaledVector(travelForward, -CAMERA_JUPITER_STANDOFF);
-    cameraTravel.endPos.addScaledVector(travelSide, CAMERA_JUPITER_SIDE_STANDOFF * 0.8);
-    cameraTravel.endPos.y += CAMERA_LOW_ALTITUDE_OFFSET * 0.8;
+    cameraTravel.endPos.addScaledVector(travelForward, -jupiterStandoff);
+    cameraTravel.endPos.addScaledVector(travelSide, jupiterSideStandoff * 0.8);
+    cameraTravel.endPos.y += lowAltitudeOffset * 0.8;
 
     cameraTravel.elapsed = 0;
+    cameraTravel.progress = 0;
     cameraTravel.active = true;
+    updateTransferTrajectory(0);
 
     camera.position.copy(cameraTravel.startPos);
     if (worldOrbit) {
@@ -1389,9 +1711,10 @@ export function createDesktopWorld({
       worldOrbit.maxDistance = 19;
       worldOrbit.update();
     }
+    updateTransferTrajectory(0);
   }
 
-  function update(dt = 0.016) {
+  function update(dt = 0.016, viewCamera = camera, viewportHeightPx = 0) {
     if (!active) return;
     const clampedDt = Math.min(0.08, Math.max(0.001, dt));
     elapsed += clampedDt;
@@ -1401,6 +1724,7 @@ export function createDesktopWorld({
       const normalized = clamp(cameraTravel.elapsed / cameraTravel.duration, 0, 1);
       const eased = normalized * normalized * (3 - 2 * normalized);
       const arcLift = Math.sin(normalized * Math.PI) * 0.05;
+      cameraTravel.progress = normalized;
 
       cameraPosTmp.lerpVectors(cameraTravel.startPos, cameraTravel.endPos, eased);
       cameraPosTmp.y += arcLift;
@@ -1418,9 +1742,15 @@ export function createDesktopWorld({
       }
     }
 
+    updateTransferTrajectory(
+      cameraTravel.active
+        ? cameraTravel.progress
+        : (elapsed * 0.05) % 1,
+    );
+
     for (const animated of animatedObjects) {
       if (animated.kind === "customUpdate" && typeof animated.update === "function") {
-        animated.update(clampedDt);
+        animated.update(clampedDt, viewCamera, viewportHeightPx);
         continue;
       }
 
@@ -1522,11 +1852,16 @@ export function createDesktopWorld({
   }
 
   function dispose() {
+    cancelCockpitModelLoad?.();
     environment?.dispose?.();
     scene.remove(root);
     if (cockpitRig.parent === camera) {
       camera.remove(cockpitRig);
     }
+    transferPathGeometry.dispose();
+    transferPathMaterial.dispose();
+    transferMarker.geometry.dispose();
+    transferMarker.material.dispose();
     safeDisposeObject3D(cockpitRig);
     safeDisposeObject3D(root);
     for (const texture of disposableTextures) {
@@ -1552,10 +1887,13 @@ export function createDesktopWorld({
     isActive: () => active,
     setAction,
     getAction,
+    setScaleMode,
+    getScaleMode,
     setStatusPanels,
     attachAvatar,
     detachAvatar,
     pickWorldNode,
+    pickWorldNodeFromRay,
     focusOnWorldCamera,
     update,
     dispose,

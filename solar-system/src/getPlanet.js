@@ -8,9 +8,18 @@ function getTextureUrl(img) {
     return new URL(`../textures/${img}`, import.meta.url).href;
 }
 
-function getPlanet({ children = [], distance = 0, img = '', size = 1 }) {
+function getPlanet({
+    children = [],
+    distance = 0,
+    img = '',
+    size = 1,
+    orbitPeriodYears = 1,
+    direction = 1,
+    startAngle = Math.random() * Math.PI * 2,
+}) {
     const orbitGroup = new THREE.Group();
-    orbitGroup.rotation.x = (Math.random() - 0.5) * 0.18;
+    orbitGroup.rotation.x = 0;
+    orbitGroup.rotation.y = startAngle;
 
     const map = texLoader.load(getTextureUrl(img));
     const planetMat = new THREE.MeshStandardMaterial({
@@ -19,9 +28,8 @@ function getPlanet({ children = [], distance = 0, img = '', size = 1 }) {
     const planet = new THREE.Mesh(geo, planetMat);
     planet.scale.setScalar(size);
 
-    const startAngle = Math.random() * Math.PI * 2;
-    planet.position.x = Math.cos(startAngle) * distance;
-    planet.position.z = Math.sin(startAngle) * distance;
+    planet.position.x = distance;
+    planet.position.z = 0;
     
     const planetRimMat = getFresnelMat({ rimHex: 0xffffff, facingHex: 0x000000 });
     const planetRimMesh = new THREE.Mesh(geo, planetRimMat);
@@ -29,14 +37,15 @@ function getPlanet({ children = [], distance = 0, img = '', size = 1 }) {
     planet.add(planetRimMesh);
 
     children.forEach((child) => {
-      child.position.x = Math.cos(startAngle) * distance;
-      child.position.z = Math.sin(startAngle) * distance;
+      child.position.x = distance;
+      child.position.z = 0;
       orbitGroup.add(child);
     });
 
-    const rate = Math.random() * 1 - 1.0;
+    const orbitalPeriod = Math.max(0.0001, Number(orbitPeriodYears) || 1);
+    const angularVelocity = ((Math.PI * 2) / orbitalPeriod) * (Number(direction) < 0 ? -1 : 1);
     orbitGroup.userData.update = (t) => {
-      orbitGroup.rotation.y = t * rate;
+      orbitGroup.rotation.y = startAngle + t * angularVelocity;
       children.forEach((child) => {
         child.userData.update?.(t);
       });

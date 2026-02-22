@@ -1,34 +1,63 @@
 import * as THREE from 'three';
 
-function getInstanced({ distance, mesh, size }) {
+function randomBetween(min, max) {
+    return min + Math.random() * (max - min);
+}
+
+function getInstanced({
+    distanceMin,
+    distanceMax,
+    mesh,
+    sizeMin,
+    sizeMax,
+    orbitPeriodYears,
+}) {
     const numObjs = 25 + Math.floor(Math.random() * 25);
     const instaMesh = new THREE.InstancedMesh(mesh.geometry, mesh.material, numObjs);
     const matrix = new THREE.Matrix4();
+    const rotationOffset = Math.random() * Math.PI * 2;
+    const direction = Math.random() > 0.08 ? 1 : -1;
+    const angularVelocity = ((Math.PI * 2) / Math.max(0.0001, orbitPeriodYears)) * direction;
     for (let i = 0; i < numObjs; i += 1) {
-        const radius = distance + Math.random() * 0.1 - 0.05;
+        const radius = randomBetween(distanceMin, distanceMax);
         const angle = Math.random() * Math.PI * 2;
         const x = Math.cos(angle) * radius;
         const z = Math.sin(angle) * radius;
         const position = new THREE.Vector3(x, 0, z);
         const quaternion = new THREE.Quaternion();
         quaternion.random();
-        const currentSize = size + Math.random() * 0.05 - 0.025;
+        const currentSize = randomBetween(sizeMin, sizeMax);
         const scale = new THREE.Vector3().setScalar(currentSize);
         matrix.compose(position, quaternion, scale);
         instaMesh.setMatrixAt(i, matrix);
     }
-    const rate = -0.04 - Math.random() * 0.05;
     instaMesh.userData = {
         update(t) {
-            instaMesh.rotation.y = t * rate;
+            instaMesh.rotation.y = rotationOffset + t * angularVelocity;
         },
     };
     return instaMesh;
 }
-function getAsteroidBelt(objs) {
+function getAsteroidBelt(
+    objs,
+    {
+        distanceMin = 2.2,
+        distanceMax = 3.2,
+        sizeMin = 0.0015,
+        sizeMax = 0.004,
+        orbitPeriodYears = 5.2,
+    } = {},
+) {
     const group = new THREE.Group();
     objs.forEach((obj) => {
-        const asteroids = getInstanced({ distance: 2.5, mesh: obj, size: 0.035 });
+        const asteroids = getInstanced({
+            distanceMin,
+            distanceMax,
+            mesh: obj,
+            sizeMin,
+            sizeMax,
+            orbitPeriodYears,
+        });
         group.add(asteroids);
     });
     return group;

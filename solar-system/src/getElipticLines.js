@@ -58,15 +58,23 @@ function getElipticLines({
         window.innerWidth || 1280,
         window.innerHeight || 720,
     ),
+    distances = [],
 } = {}) {
     const ringGroup = new THREE.Group();
-    for (let i = 0; i < 20; i += 1) {
-        const gap = 0.075 + Math.random() * 0.005;
-        const hue = 0.25 - i / 20 * 0.27;
-        const lightness = 0.5 - i / 20 * 0.5;
-        const width = 0.5 + Math.random() * 1;
+    const orbitDistances = Array.isArray(distances) && distances.length
+        ? [...distances]
+            .map((distance) => Number(distance))
+            .filter((distance) => Number.isFinite(distance) && distance > 0)
+            .sort((a, b) => a - b)
+        : Array.from({ length: 20 }, (_, i) => 1.1 + i * 0.08);
+
+    for (let i = 0; i < orbitDistances.length; i += 1) {
+        const normalized = orbitDistances.length <= 1 ? 0 : i / (orbitDistances.length - 1);
+        const hue = 0.25 - normalized * 0.27;
+        const lightness = 0.5 - normalized * 0.5;
+        const width = 0.6;
         const ring = getRing({
-            distance: 1.1 + i * gap,
+            distance: orbitDistances[i],
             hue,
             lightness,
             width,
