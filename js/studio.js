@@ -929,6 +929,9 @@ const elevenLabsVoice = createElevenLabsVoice({
   agentId: voiceCredentials.elevenLabsAgentId,
   apiKey: voiceCredentials.elevenLabsApiKey,
   connectionType: elevenLabsConnectionType,
+  clientTools: {
+    enterWorld: async () => runEnterWorldClientTool(),
+  },
   onStatus: setStatus,
   onConnectionStateChange: ({ connected }) => {
     handleVoiceConnectionChange("elevenlabs", connected);
@@ -1188,6 +1191,22 @@ function exitWorldMode({ silent = false } = {}) {
   if (!silent) {
     setStatus("Returned to carousel", 1700);
   }
+}
+
+function runEnterWorldClientTool() {
+  if (worldModeActive) {
+    return {
+      status: "already_in_world",
+      worldModeActive: true,
+    };
+  }
+
+  enterWorldMode();
+
+  return {
+    status: worldModeActive ? "entered_world" : "enter_world_failed",
+    worldModeActive,
+  };
 }
 
 function handleWorldToolAction(payload) {

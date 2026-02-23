@@ -161,6 +161,7 @@ export function createElevenLabsVoice({
   apiKey = "",
   voiceId = "",
   connectionType = DEFAULT_CONNECTION_TYPE,
+  clientTools = {},
   onStatus = () => {},
   onAssistantSpeechLevel = () => {},
   onAssistantViseme = () => {},
@@ -192,6 +193,16 @@ export function createElevenLabsVoice({
   let runtimeAgentId = String(agentId || "").trim() || DEFAULT_AGENT_ID;
   let runtimeApiKey = String(apiKey || "").trim();
   let transientApiKey = "";
+  const normalizedClientTools = {};
+  if (clientTools && typeof clientTools === "object") {
+    for (const [toolName, handler] of Object.entries(clientTools)) {
+      if (typeof handler !== "function") continue;
+      const normalizedName = String(toolName || "").trim();
+      if (!normalizedName) continue;
+      normalizedClientTools[normalizedName] = handler;
+    }
+  }
+  const hasClientTools = Object.keys(normalizedClientTools).length > 0;
 
   function isConnected() {
     if (!state.conversation) return false;
@@ -617,9 +628,22 @@ export function createElevenLabsVoice({
       let lastServerError = { message: "", context: null };
       const baseOptions = {
         connectionType,
+        ...(hasClientTools ? { clientTools: normalizedClientTools } : {}),
         onConnect: () => {
           notifyConnectionState(true);
           updateButton();
+        },
+        onUnhandledClientToolCall: (payload) => {
+          const detail = payload && typeof payload === "object" ? payload : {};
+          const requestedToolName = String(
+            detail.toolName || detail.name || detail.tool_name || "",
+          ).trim();
+          onStatus(
+            requestedToolName
+              ? `ElevenLabs requested unavailable client tool: ${requestedToolName}`
+              : "ElevenLabs requested unavailable client tool.",
+            4200,
+          );
         },
         onDisconnect: (details) => {
           if (!state.conversation) return;
