@@ -212,6 +212,49 @@ function getPlanetBody(orbitGroup) {
   return orbitGroup.children.find((child) => child?.isMesh) || null;
 }
 
+function tuneSunForWorldSetpiece(sun) {
+  if (!sun) return;
+
+  if (sun.material?.emissive) {
+    sun.material.emissive.setHex(0x2d4263);
+    sun.material.emissiveIntensity = 0.12;
+    sun.material.needsUpdate = true;
+  }
+
+  for (const child of sun.children || []) {
+    if (child?.isPointLight) {
+      child.color?.setHex?.(0x9cb8df);
+      child.intensity = 0.55;
+      child.distance = 10;
+      child.decay = 2;
+      continue;
+    }
+
+    const material = child?.material;
+    if (!material) continue;
+
+    if (material.uniforms?.color1?.value) {
+      material.uniforms.color1.value.setHex(0xa7c2e6);
+    }
+    if (material.uniforms?.color2?.value) {
+      material.uniforms.color2.value.setHex(0x080d13);
+    }
+    if (material.color) {
+      material.color.setHex(0x9bb9e0);
+    }
+    if ("transparent" in material) {
+      material.transparent = true;
+    }
+    if ("opacity" in material) {
+      material.opacity = 0.22;
+    }
+    if ("toneMapped" in material) {
+      material.toneMapped = false;
+    }
+    material.needsUpdate = true;
+  }
+}
+
 export function createSolarSystemSetpiece({
   textureSink = [],
 } = {}) {
@@ -300,6 +343,7 @@ export function createSolarSystemSetpiece({
   }
 
   const sun = getSun();
+  tuneSunForWorldSetpiece(sun);
   const sunRadiusAu = kmToAu(696_340);
   sun.scale.setScalar(sunRadiusAu);
   solarSystem.add(sun);
@@ -371,7 +415,10 @@ export function createSolarSystemSetpiece({
   orbitLines.traverse((node) => {
     if (node?.material && "opacity" in node.material) {
       node.material.transparent = true;
-      node.material.opacity = 0.2;
+      node.material.opacity = 0.1;
+      if (node.material.color) {
+        node.material.color.setHex(0x6f85a5);
+      }
       node.material.needsUpdate = true;
     }
   });
@@ -387,19 +434,19 @@ export function createSolarSystemSetpiece({
   trackTextureMaps(starfield, textureSink, textureSeen);
 
   const nebulaA = getNebula({
-    hue: 0.03,
-    sat: 0.6,
+    hue: 0.58,
+    sat: 0.18,
     numSprites: 8,
-    opacity: 0.12,
+    opacity: 0.05,
     radius: 20,
     size: 30,
     z: -18,
   });
   const nebulaB = getNebula({
-    hue: 0.0,
-    sat: 0.26,
+    hue: 0.62,
+    sat: 0.14,
     numSprites: 8,
-    opacity: 0.1,
+    opacity: 0.04,
     radius: 20,
     size: 30,
     z: 18,
@@ -408,7 +455,7 @@ export function createSolarSystemSetpiece({
   trackTextureMaps(nebulaA, textureSink, textureSeen);
   trackTextureMaps(nebulaB, textureSink, textureSeen);
 
-  const localFill = new THREE.PointLight(0xe2ddd2, 0.28, 14, 2);
+  const localFill = new THREE.PointLight(0x9fb7da, 0.14, 14, 2);
   localFill.position.set(0, 1.8, 1.2);
   setpiece.add(localFill);
 

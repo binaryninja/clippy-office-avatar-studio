@@ -430,7 +430,7 @@ const hal9000Fields = [
   {
     title: "Shape",
     fields: [
-      { key: "scale", label: "Body Scale", type: "range", min: 0.35, max: 2.2, step: 0.01 },
+      { key: "scale", label: "Body Scale", type: "range", min: 0.1, max: 0.6, step: 0.01 },
       { key: "panelWidth", label: "Panel Width", type: "range", min: 0.7, max: 1.5, step: 0.01 },
       { key: "panelHeight", label: "Panel Height", type: "range", min: 0.7, max: 1.5, step: 0.01 },
       { key: "panelDepth", label: "Panel Depth", type: "range", min: 0.7, max: 1.4, step: 0.01 },
@@ -808,7 +808,7 @@ export const AVATAR_DEFINITIONS = {
       propRotY: 0,
       propRotZ: 0,
 
-      scale: 0.72,
+      scale: 0.35,
       panelWidth: 1,
       panelHeight: 1,
       panelDepth: 1,
@@ -825,11 +825,11 @@ export const AVATAR_DEFINITIONS = {
       irisColor: "#cc1100",
       pupilColor: "#ff4422",
       glowColor: "#ff2200",
-      metalness: 0.95,
-      roughness: 0.12,
-      clearcoat: 0.8,
-      clearcoatRoughness: 0.05,
-      glowIntensity: 0.72,
+      metalness: 0.78,
+      roughness: 0.28,
+      clearcoat: 0.58,
+      clearcoatRoughness: 0.24,
+      glowIntensity: 0.52,
     },
   },
 };

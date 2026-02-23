@@ -30,6 +30,14 @@
           <h1>Avatar Studio: Mission Mode</h1>
           <p class="sub">Minimal deep-space controls with HAL-style world instrumentation and avatar command routing.</p>
         </div>
+        <div id="worldPoseHud" class="world-pose-hud" hidden aria-live="off">
+          <p class="world-pose-title">World Pose HUD</p>
+          <p id="worldPoseHudMode" class="world-pose-line">MODE Desktop · TARGET DIST 7.000</p>
+          <p id="worldPoseHudPos" class="world-pose-line">POS [0.000, 0.000, 0.000]</p>
+          <p id="worldPoseHudTarget" class="world-pose-line">TARGET [0.000, 0.000, -7.000]</p>
+          <p id="worldPoseHudSpawn" class="world-pose-line">ENTRY pos=[0.000, 0.000, 0.000] target=[0.000, 0.000, -7.000]</p>
+          <button type="button" id="worldPoseHudCopy" class="world-pose-copy-btn">Copy Entry</button>
+        </div>
       </section>
 
       <aside class="panel">

@@ -48,6 +48,12 @@ const btnElevenVoice = document.getElementById("btnElevenVoice");
 const worldActionEl = document.getElementById("worldAction");
 const worldScaleModeEl = document.getElementById("worldScaleMode");
 const worldSelectionEl = document.getElementById("worldSelection");
+const worldPoseHudEl = document.getElementById("worldPoseHud");
+const worldPoseHudModeEl = document.getElementById("worldPoseHudMode");
+const worldPoseHudPosEl = document.getElementById("worldPoseHudPos");
+const worldPoseHudTargetEl = document.getElementById("worldPoseHudTarget");
+const worldPoseHudSpawnEl = document.getElementById("worldPoseHudSpawn");
+const worldPoseHudCopyEl = document.getElementById("worldPoseHudCopy");
 const characterNameEl = document.getElementById("characterName");
 const characterBackgroundEl = document.getElementById("characterBackground");
 const characterPersonalityEl = document.getElementById("characterPersonality");
@@ -93,6 +99,16 @@ lights.key.shadow.mapSize.set(1024, 1024);
 lights.fill.position.set(-4.4, 2.4, 4.8);
 lights.rim.position.set(-5.1, 1.4, -3.2);
 scene.add(lights.hemi, lights.ambient, lights.key, lights.fill, lights.rim);
+for (const light of Object.values(lights)) {
+  light.userData.baseIntensity = Number(light.intensity) || 0;
+}
+
+function setCarouselLightsEnabled(enabled = true) {
+  for (const light of Object.values(lights)) {
+    const baseIntensity = Number(light.userData?.baseIntensity) || 0;
+    light.intensity = enabled ? baseIntensity : 0;
+  }
+}
 
 const CHARACTER_PROFILE_STORAGE_KEY = "office-avatar-studio:character-profiles:v1";
 const CHARACTER_PROFILE_MAX_LENGTH = 420;
@@ -446,6 +462,7 @@ let wsSustainedMode = "idle";
 let _wsPreviewInstance = null;
 let wsThinkingText = "";
 let wsThinkingClearTimer = null;
+let worldPoseHudClause = "";
 let xrEnterButton = null;
 let xrSupportChecked = false;
 let xrImmersiveVrSupported = false;
@@ -460,9 +477,30 @@ const XR_WORLD_PICK_DISTANCE = 48;
 const XR_MOVE_SPEED_MPS = 2.45;
 const XR_TURN_SPEED_RPS = 1.6;
 const XR_AXIS_DEADZONE = 0.2;
+const DESKTOP_WORLD_MOVE_SPEED_MPS = 1.85;
+const DESKTOP_WORLD_VERTICAL_SPEED_MPS = 1.25;
+const DESKTOP_WORLD_TURN_SPEED_RPS = 1.55;
+const DESKTOP_WORLD_BOOST_MULTIPLIER = 2.1;
+const WORLD_POSE_HUD_LOOK_DISTANCE = 7;
 const XR_WORLD_SHIP_LOCK_ENABLED = false;
 const XR_WORLD_FALLBACK_BACKOFF = 0.44;
 const XR_WORLD_FALLBACK_LIFT = 0.06;
+const DESKTOP_WORLD_KEY_BINDINGS = Object.freeze({
+  KeyW: "forward",
+  KeyS: "backward",
+  KeyA: "strafeLeft",
+  KeyD: "strafeRight",
+  KeyQ: "turnLeft",
+  KeyE: "turnRight",
+  KeyR: "moveUp",
+  KeyF: "moveDown",
+  ArrowUp: "forward",
+  ArrowDown: "backward",
+  ArrowLeft: "turnLeft",
+  ArrowRight: "turnRight",
+  ShiftLeft: "boost",
+  ShiftRight: "boost",
+});
 
 const pointer = {
   x: 0,
@@ -484,10 +522,11 @@ const xrAlignCurrentForward = new THREE.Vector3();
 const xrAlignOffset = new THREE.Vector3();
 const xrAlignPoseQuaternion = new THREE.Quaternion();
 const xrAlignRigWorldQuaternion = new THREE.Quaternion();
-const xrShipLockPosition = new THREE.Vector3();
-const xrShipLockDelta = new THREE.Vector3();
 const xrFallbackForward = new THREE.Vector3();
 const xrWorldUp = new THREE.Vector3(0, 1, 0);
+const worldPoseHudPosition = new THREE.Vector3();
+const worldPoseHudForward = new THREE.Vector3();
+const worldPoseHudTarget = new THREE.Vector3();
 const xrDesktopCameraSnapshot = {
   captured: false,
   position: new THREE.Vector3(),
@@ -497,6 +536,17 @@ const xrDesktopCameraSnapshot = {
   orbitTarget: new THREE.Vector3(),
 };
 const xrControllers = [];
+const desktopWorldKeyboardState = {
+  forward: false,
+  backward: false,
+  strafeLeft: false,
+  strafeRight: false,
+  turnLeft: false,
+  turnRight: false,
+  moveUp: false,
+  moveDown: false,
+  boost: false,
+};
 
 const WORLD_ACTION_MODE_PREFERENCES = Object.freeze({
   list: ["file", "searching", "reading", "thinking", "idle"],
@@ -612,6 +662,77 @@ function setStatus(text, ttlMs = 1600) {
       statusEl.textContent = "";
     }
   }, ttlMs);
+}
+
+function formatVector3ForHud(vector) {
+  const x = Number(vector?.x) || 0;
+  const y = Number(vector?.y) || 0;
+  const z = Number(vector?.z) || 0;
+  return `[${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)}]`;
+}
+
+function updateWorldPoseHud() {
+  if (!worldPoseHudEl) return;
+
+  const shouldShow = worldModeActive;
+  worldPoseHudEl.hidden = !shouldShow;
+  if (!shouldShow) {
+    worldPoseHudClause = "";
+    return;
+  }
+
+  camera.getWorldPosition(worldPoseHudPosition);
+  camera.getWorldDirection(worldPoseHudForward);
+  worldPoseHudTarget.copy(worldPoseHudPosition);
+  worldPoseHudTarget.addScaledVector(worldPoseHudForward, WORLD_POSE_HUD_LOOK_DISTANCE);
+
+  if (worldPoseHudModeEl) {
+    const modeLabel = renderer.xr.isPresenting ? "XR" : "Desktop";
+    worldPoseHudModeEl.textContent = `MODE ${modeLabel} · TARGET DIST ${WORLD_POSE_HUD_LOOK_DISTANCE.toFixed(3)}`;
+  }
+  if (worldPoseHudPosEl) {
+    worldPoseHudPosEl.textContent = `POS ${formatVector3ForHud(worldPoseHudPosition)}`;
+  }
+  if (worldPoseHudTargetEl) {
+    worldPoseHudTargetEl.textContent = `TARGET ${formatVector3ForHud(worldPoseHudTarget)}`;
+  }
+  worldPoseHudClause = `ENTRY pos=${formatVector3ForHud(worldPoseHudPosition)} target=${formatVector3ForHud(worldPoseHudTarget)}`;
+  if (worldPoseHudSpawnEl) {
+    worldPoseHudSpawnEl.textContent = worldPoseHudClause;
+  }
+}
+
+async function copyTextToClipboard(text) {
+  const value = String(text || "").trim();
+  if (!value) return false;
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Fallback to document.execCommand below.
+    }
+  }
+
+  const input = document.createElement("textarea");
+  input.value = value;
+  input.setAttribute("readonly", "true");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  input.style.pointerEvents = "none";
+  document.body.append(input);
+  input.select();
+
+  let copied = false;
+  try {
+    copied = Boolean(document.execCommand("copy"));
+  } catch {
+    copied = false;
+  }
+
+  input.remove();
+  return copied;
 }
 
 function getAvatarRuntime(avatarId = activeAvatarId) {
@@ -1140,14 +1261,17 @@ function swapWorldAvatar(avatarId) {
 function enterWorldMode({ silent = false } = {}) {
   if (worldModeActive) return;
   if (!getAvatarRuntime()) return;
+  resetDesktopWorldKeyboardState();
 
   desktopWorld.setAction(normalizeWorldAction(worldActionEl?.value));
   desktopWorld.setVisible(true);
   stageRig.setVisible(false);
+  setCarouselLightsEnabled(false);
 
   if (!swapWorldAvatar(activeAvatarId)) {
     desktopWorld.setVisible(false);
     stageRig.setVisible(true);
+    setCarouselLightsEnabled(true);
     setStatus("Could not mount avatar into world", 2200);
     return;
   }
@@ -1160,17 +1284,18 @@ function enterWorldMode({ silent = false } = {}) {
     xrPlayerRig.rotation.set(0, 0, 0);
   }
   desktopWorld.focusOnWorldCamera(orbit);
-  scene.fog = new THREE.Fog(0x02050f, 20, 78);
+  scene.fog = new THREE.Fog(0x070a10, 18, 78);
   setWorldSelectionText(getWorldSelectionPrompt());
   updateXrControllerRays();
   refreshWorldStatusPanels();
   if (!silent) {
-    setStatus("Entered world: Earth orbit insertion, transfer trajectory locked to Jupiter", 2400);
+    setStatus("Entered world: keyboard controls W/A/S/D move, Q/E turn, R/F rise-lower, Shift boost", 3600);
   }
 }
 
 function exitWorldMode({ silent = false } = {}) {
   if (!worldModeActive) return;
+  resetDesktopWorldKeyboardState();
 
   const previous = desktopWorld.detachAvatar();
   if (previous.avatarGroup) {
@@ -1181,6 +1306,11 @@ function exitWorldMode({ silent = false } = {}) {
   worldModeActive = false;
   desktopWorld.setVisible(false);
   stageRig.setVisible(true);
+  setCarouselLightsEnabled(true);
+  if (!renderer.xr.isPresenting) {
+    xrPlayerRig.position.set(0, 0, 0);
+    xrPlayerRig.rotation.set(0, 0, 0);
+  }
   stageRig.focusAvatar(activeAvatarId, true);
   applyScenePreset();
   syncWorldToggleButton();
@@ -1747,6 +1877,102 @@ function applyXrAxisDeadzone(value) {
   return Math.sign(value) * normalized;
 }
 
+function shouldIgnoreKeyboardControlsTarget(target = document.activeElement) {
+  if (!target || typeof target !== "object") return false;
+  if (target instanceof HTMLInputElement) return true;
+  if (target instanceof HTMLTextAreaElement) return true;
+  if (target instanceof HTMLSelectElement) return true;
+  if (target instanceof HTMLButtonElement) return true;
+  if (target instanceof HTMLElement && target.isContentEditable) return true;
+  return false;
+}
+
+function resetDesktopWorldKeyboardState() {
+  desktopWorldKeyboardState.forward = false;
+  desktopWorldKeyboardState.backward = false;
+  desktopWorldKeyboardState.strafeLeft = false;
+  desktopWorldKeyboardState.strafeRight = false;
+  desktopWorldKeyboardState.turnLeft = false;
+  desktopWorldKeyboardState.turnRight = false;
+  desktopWorldKeyboardState.moveUp = false;
+  desktopWorldKeyboardState.moveDown = false;
+  desktopWorldKeyboardState.boost = false;
+}
+
+function setDesktopWorldKeyboardFlag(action, pressed) {
+  if (!action || !Object.hasOwn(desktopWorldKeyboardState, action)) return;
+  desktopWorldKeyboardState[action] = Boolean(pressed);
+}
+
+function handleDesktopWorldKeyboardEvent(event, pressed) {
+  const action = DESKTOP_WORLD_KEY_BINDINGS[event?.code];
+  if (!action) return;
+
+  if (!pressed) {
+    setDesktopWorldKeyboardFlag(action, false);
+    return;
+  }
+
+  if (!worldModeActive || renderer.xr.isPresenting) return;
+  if (shouldIgnoreKeyboardControlsTarget()) return;
+
+  event.preventDefault();
+  setDesktopWorldKeyboardFlag(action, true);
+}
+
+function updateDesktopWorldKeyboardLocomotion(dt) {
+  if (!worldModeActive || renderer.xr.isPresenting) return;
+
+  const moveForwardInput = (desktopWorldKeyboardState.forward ? 1 : 0)
+    - (desktopWorldKeyboardState.backward ? 1 : 0);
+  const moveStrafeInput = (desktopWorldKeyboardState.strafeRight ? 1 : 0)
+    - (desktopWorldKeyboardState.strafeLeft ? 1 : 0);
+  const moveVerticalInput = (desktopWorldKeyboardState.moveUp ? 1 : 0)
+    - (desktopWorldKeyboardState.moveDown ? 1 : 0);
+  const turnInput = (desktopWorldKeyboardState.turnRight ? 1 : 0)
+    - (desktopWorldKeyboardState.turnLeft ? 1 : 0);
+
+  if (!moveForwardInput && !moveStrafeInput && !moveVerticalInput && !turnInput) {
+    return;
+  }
+
+  const boost = desktopWorldKeyboardState.boost ? DESKTOP_WORLD_BOOST_MULTIPLIER : 1;
+  const moveDistance = DESKTOP_WORLD_MOVE_SPEED_MPS * boost * dt;
+  const verticalDistance = DESKTOP_WORLD_VERTICAL_SPEED_MPS * boost * dt;
+  const turnDelta = -turnInput * DESKTOP_WORLD_TURN_SPEED_RPS * dt;
+
+  if (turnInput) {
+    camera.getWorldPosition(xrHeadPosition);
+    xrPlayerRig.position.sub(xrHeadPosition);
+    xrPlayerRig.position.applyAxisAngle(xrWorldUp, turnDelta);
+    xrPlayerRig.position.add(xrHeadPosition);
+    xrPlayerRig.rotateY(turnDelta);
+  }
+
+  if (moveForwardInput || moveStrafeInput || moveVerticalInput) {
+    camera.getWorldDirection(xrMoveForward);
+    xrMoveForward.y = 0;
+    if (xrMoveForward.lengthSq() < 1e-6) {
+      xrMoveForward.set(0, 0, -1);
+    } else {
+      xrMoveForward.normalize();
+    }
+    xrMoveRight.crossVectors(xrMoveForward, xrWorldUp).normalize();
+
+    xrMoveDelta.set(0, 0, 0);
+    if (moveForwardInput) {
+      xrMoveDelta.addScaledVector(xrMoveForward, moveForwardInput * moveDistance);
+    }
+    if (moveStrafeInput) {
+      xrMoveDelta.addScaledVector(xrMoveRight, moveStrafeInput * moveDistance);
+    }
+    if (moveVerticalInput) {
+      xrMoveDelta.y += moveVerticalInput * verticalDistance;
+    }
+    xrPlayerRig.position.add(xrMoveDelta);
+  }
+}
+
 function getXrControllerRay(controller, origin, direction) {
   if (!controller) return false;
   origin.setFromMatrixPosition(controller.matrixWorld);
@@ -1778,7 +2004,6 @@ function updateXrControllerRays() {
 
 function updateXrLocomotion(dt) {
   if (!renderer.xr.isPresenting || !worldModeActive) return;
-  if (XR_WORLD_SHIP_LOCK_ENABLED && desktopWorld.isCameraLockedToShip?.()) return;
   if (xrStartupAlignFrames > 0) return;
 
   const leftController = resolveXrControllerForHand("left") || resolveAnyConnectedXrController();
@@ -1823,23 +2048,6 @@ function updateXrLocomotion(dt) {
     }
     xrPlayerRig.position.add(xrMoveDelta);
   }
-}
-
-function lockXrCameraToWorldShipCockpit() {
-  if (!XR_WORLD_SHIP_LOCK_ENABLED) return false;
-  if (!renderer.xr.isPresenting || !worldModeActive) return false;
-  if (!desktopWorld.isCameraLockedToShip?.()) return false;
-  if (typeof desktopWorld.getWorldShipCameraPose !== "function") return false;
-
-  const hasPose = desktopWorld.getWorldShipCameraPose(xrShipLockPosition, null, { xr: true });
-  if (!hasPose) return false;
-
-  const xrCamera = renderer.xr.getCamera(camera);
-  if (!xrCamera) return false;
-  xrCamera.getWorldPosition(xrHeadPosition);
-  xrShipLockDelta.copy(xrShipLockPosition).sub(xrHeadPosition);
-  xrPlayerRig.position.add(xrShipLockDelta);
-  return true;
 }
 
 function setupXrControllers() {
@@ -1980,11 +2188,7 @@ function setupXrSessionHandlers() {
     }
     updateXrControllerRays();
     syncXrEnterButtonState();
-    if (XR_WORLD_SHIP_LOCK_ENABLED && worldModeActive && desktopWorld.isCameraLockedToShip?.()) {
-      setStatus("Entered VR: cockpit lock active (head look only), trigger selects nodes", 2400);
-    } else {
-      setStatus("Entered VR: left stick move, right stick turn, trigger selects nodes", 2200);
-    }
+    setStatus("Entered VR: left stick move, right stick turn, trigger selects nodes", 2200);
   });
 
   renderer.xr.addEventListener("sessionend", () => {
@@ -2076,6 +2280,15 @@ function pickAvatarAt(clientX, clientY) {
 function installGlobalHandlers() {
   avatarSelectEl.addEventListener("change", () => {
     loadAvatar(avatarSelectEl.value);
+  });
+
+  worldPoseHudCopyEl?.addEventListener("click", async () => {
+    const copied = await copyTextToClipboard(worldPoseHudClause);
+    if (copied) {
+      setStatus("World entry clause copied", 1600);
+      return;
+    }
+    setStatus("Clipboard blocked", 2300);
   });
 
   btnWorldToggle?.addEventListener("click", () => {
@@ -2245,6 +2458,24 @@ function installGlobalHandlers() {
     }
   });
 
+  window.addEventListener("keydown", (event) => {
+    handleDesktopWorldKeyboardEvent(event, true);
+  });
+
+  window.addEventListener("keyup", (event) => {
+    handleDesktopWorldKeyboardEvent(event, false);
+  });
+
+  window.addEventListener("blur", () => {
+    resetDesktopWorldKeyboardState();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      resetDesktopWorldKeyboardState();
+    }
+  });
+
   window.addEventListener("resize", resize);
 }
 
@@ -2290,12 +2521,11 @@ function startRenderLoop() {
         xrStartupAlignFrames -= 1;
       }
     }
-    if (XR_WORLD_SHIP_LOCK_ENABLED && renderer.xr.isPresenting) {
-      lockXrCameraToWorldShipCockpit();
-    }
+    updateDesktopWorldKeyboardLocomotion(dt);
     updateXrLocomotion(dt);
     updateXrControllerRays();
-    if (!renderer.xr.isPresenting) {
+    updateWorldPoseHud();
+    if (!renderer.xr.isPresenting && !worldModeActive) {
       orbit.update();
     }
     renderer.render(scene, camera);

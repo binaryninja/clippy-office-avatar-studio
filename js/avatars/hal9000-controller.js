@@ -397,9 +397,12 @@ function createHal9000WireRig({ THREE, avatar }) {
   const segmentCount = 24;
   const wireLength = 2.8;
   const segmentLength = wireLength / segmentCount;
-  const gravity = -0.008;
-  const damping = 0.97;
+  const gravity = -0.0022;
+  const damping = 0.985;
   const constraintIterations = 8;
+  const buoyancy = 0.0016;
+  const driftStrength = 0.0032;
+  const jitterStrength = 0.0017;
 
   const wireRoot = new THREE.Group();
   wireRoot.name = "hal9000-wire-root";
@@ -483,6 +486,9 @@ function createHal9000WireRig({ THREE, avatar }) {
       line,
       connector,
       sparks,
+      driftPhaseX: Math.random() * Math.PI * 2,
+      driftPhaseY: Math.random() * Math.PI * 2,
+      driftPhaseZ: Math.random() * Math.PI * 2,
     };
   }
 
@@ -616,12 +622,16 @@ function createHal9000WireRig({ THREE, avatar }) {
       curr.y += gravity * step;
 
       const tipFactor = i / segmentCount;
-      const twitch = 0.005 * tipFactor * tipFactor * step;
+      const twitch = jitterStrength * tipFactor * tipFactor * step;
       curr.x += (Math.random() - 0.5) * twitch;
       curr.y += (Math.random() - 0.5) * twitch * 0.8;
       curr.z += (Math.random() - 0.5) * twitch;
-      curr.x += Math.sin(t * 4.6 + i * 0.6) * 0.0016 * tipFactor * step;
-      curr.z += Math.cos(t * 3.8 + i * 0.45) * 0.0012 * tipFactor * step;
+
+      // Low-gravity drift: gentle buoyancy and slow orbital motion.
+      curr.y += buoyancy * tipFactor * step;
+      curr.x += Math.sin(t * 1.05 + i * 0.42 + wire.driftPhaseX) * driftStrength * tipFactor * step;
+      curr.y += Math.sin(t * 0.82 + i * 0.36 + wire.driftPhaseY) * driftStrength * 0.5 * tipFactor * step;
+      curr.z += Math.cos(t * 0.94 + i * 0.38 + wire.driftPhaseZ) * driftStrength * 0.85 * tipFactor * step;
     }
 
     for (let iter = 0; iter < constraintIterations; iter += 1) {
@@ -734,21 +744,32 @@ export function createHal9000Controller({
 
   function updateMaterials() {
     avatar.materials.panel.color.set(state.panelColor);
-    avatar.materials.panel.metalness = clamp(state.metalness, 0, 1);
-    avatar.materials.panel.roughness = clamp(state.roughness, 0, 1);
-    avatar.materials.panel.clearcoat = clamp(state.clearcoat, 0, 1);
-    avatar.materials.panel.clearcoatRoughness = clamp(state.clearcoatRoughness, 0, 1);
+    const panelMetalness = clamp(state.metalness * 0.65, 0, 1);
+    const panelRoughness = clamp(Math.max(state.roughness, 0.3), 0, 1);
+    avatar.materials.panel.metalness = panelMetalness;
+    avatar.materials.panel.roughness = panelRoughness;
+    avatar.materials.panel.clearcoat = clamp(state.clearcoat * 0.6, 0, 1);
+    avatar.materials.panel.clearcoatRoughness = clamp(Math.max(state.clearcoatRoughness, 0.24), 0, 1);
+    avatar.materials.panel.envMapIntensity = 0.42 + (1 - panelRoughness) * 0.08;
     avatar.materials.panel.needsUpdate = true;
 
     avatar.materials.accent.color.set(state.accentColor);
     avatar.materials.accent.needsUpdate = true;
 
     avatar.materials.bezel.color.set(state.bezelColor);
+    avatar.materials.bezel.metalness = clamp(0.28 + state.metalness * 0.36, 0, 1);
+    avatar.materials.bezel.roughness = clamp(0.36 + state.roughness * 0.42, 0, 1);
+    avatar.materials.bezel.clearcoat = clamp(state.clearcoat * 0.55, 0, 1);
+    avatar.materials.bezel.clearcoatRoughness = clamp(0.22 + state.clearcoatRoughness * 0.58, 0, 1);
+    avatar.materials.bezel.envMapIntensity = 0.32;
     avatar.materials.bezel.needsUpdate = true;
 
     avatar.materials.lensGlass.color.set(state.lensColor);
     avatar.materials.lensGlass.emissive.set(state.glowColor);
-    avatar.materials.lensGlass.emissiveIntensity = clamp(0.03 + state.glowIntensity * 0.08, 0, 2);
+    avatar.materials.lensGlass.roughness = clamp(0.22 + state.roughness * 0.25, 0, 1);
+    avatar.materials.lensGlass.clearcoatRoughness = clamp(0.1 + state.clearcoatRoughness * 0.35, 0, 1);
+    avatar.materials.lensGlass.envMapIntensity = 0.36;
+    avatar.materials.lensGlass.emissiveIntensity = clamp(0.02 + state.glowIntensity * 0.05, 0, 1.2);
     avatar.materials.lensGlass.needsUpdate = true;
 
     avatar.materials.iris.color.set(state.irisColor);
@@ -941,13 +962,16 @@ export function createHal9000Controller({
     if (avatar.hotPoint) {
       avatar.hotPoint.scale.setScalar(clamp(0.95 + pulse * 0.2, 0.8, 1.5));
     }
-    avatar.eyeLight.intensity = (
-      0.35
-      + state.glowIntensity * 0.55
-      + idlePulse * 0.3
-      + voiceGlow * 2.6
-      + expr.glowBoost * 0.3
+    avatar.eyeLight.intensity = clamp(
+      0.1
+      + state.glowIntensity * 0.28
+      + idlePulse * 0.12
+      + voiceGlow * 1.15
+      + expr.glowBoost * 0.14,
+      0,
+      1.5,
     );
+    avatar.eyeLight.distance = 2.8 + state.glowIntensity * 0.8;
   }
 
   function applyPropPlacement() {

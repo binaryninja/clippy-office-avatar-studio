@@ -156,6 +156,52 @@ body::after {
   line-height: 1.35;
 }
 
+.world-pose-hud {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  max-width: min(560px, calc(100% - 28px));
+  display: grid;
+  gap: 4px;
+  background: rgba(10, 10, 10, 0.78);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  backdrop-filter: blur(6px);
+  box-shadow:
+    0 0 0 1px rgba(239, 236, 228, 0.05),
+    0 0 22px rgba(0, 0, 0, 0.34);
+  pointer-events: auto;
+  font-family: "Share Tech Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+  z-index: 3;
+}
+
+.world-pose-title {
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.world-pose-line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #e4dfd2;
+  word-break: break-word;
+}
+
+.world-pose-copy-btn {
+  justify-self: end;
+  height: 28px;
+  padding: 0 10px;
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
 .panel {
   position: relative;
   min-height: 0;
@@ -767,6 +813,12 @@ textarea:focus-visible {
   .hud {
     left: 10px;
     top: 10px;
+    padding: 8px 10px;
+  }
+
+  .world-pose-hud {
+    right: 10px;
+    top: 112px;
     padding: 8px 10px;
   }
 

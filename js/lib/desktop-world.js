@@ -11,14 +11,9 @@ export const DESKTOP_WORLD_ACTIONS = Object.freeze([
   "delete",
 ]);
 
-const DEFAULT_SCELD_MODEL_URLS = Object.freeze([
-  new URL(/* @vite-ignore */ "../../assets/models/sceld.glb", import.meta.url).href,
-  new URL(/* @vite-ignore */ "../../assets/models/sceld.gltf", import.meta.url).href,
-]);
-const SCELD_MODEL_TARGET_LONGEST_DIMENSION = 3.45;
-const DEFAULT_WORLD_SHIP_MODEL_URLS = Object.freeze([
-  new URL(/* @vite-ignore */ "../../add-to-project/scene.gltf", import.meta.url).href,
-]);
+const DEFAULT_WORLD_SHIP_COCKPIT_MODEL_URLS = Object.freeze([]);
+const WORLD_SHIP_COCKPIT_TARGET_LONGEST_DIMENSION = 3.45;
+const DEFAULT_WORLD_SHIP_MODEL_URLS = Object.freeze([]);
 const WORLD_SHIP_TARGET_LONGEST_DIMENSION = 0.36;
 const WORLD_SHIP_COCKPIT_FORWARD_OFFSET_RATIO = 0.033_823_53;
 const WORLD_SHIP_COCKPIT_VERTICAL_OFFSET_RATIO = 0.011_764_71;
@@ -31,16 +26,7 @@ const WORLD_SHIP_COCKPIT_ANCHOR_NAME_HINTS = Object.freeze([
   "reactfront_reactfront_0",
   "reactfront",
 ]);
-const WORLD_SHIP_EARTH_STANDOFF_RATIO = 0.032;
-const WORLD_SHIP_EARTH_SIDE_RATIO = 0.048;
-const WORLD_SHIP_EARTH_ALTITUDE_RATIO = 0.004;
-const WORLD_SHIP_MIN_STANDOFF = 0.08;
-const WORLD_SHIP_MIN_SIDE = 0.12;
-const WORLD_SHIP_MIN_ALTITUDE = 0.015;
-const WORLD_SHIP_CAMERA_LOCAL_POSITION_DESKTOP = Object.freeze([0, 0.012, -0.028]);
-const WORLD_SHIP_CAMERA_LOCAL_TARGET_DESKTOP = Object.freeze([0, 0.01, -1.028]);
-const WORLD_SHIP_CAMERA_LOCAL_POSITION_XR = Object.freeze([0, 0.034, -0.19]);
-const WORLD_SHIP_CAMERA_LOCAL_TARGET_XR = Object.freeze([0, 0.028, -1.19]);
+const WORLD_CAMERA_NEAR_ACTIVE = 0.002;
 
 const DIRECTORY_STRUCTURE = Object.freeze({
   name: "workspace",
@@ -109,11 +95,11 @@ const DIRECTORY_STRUCTURE = Object.freeze({
 const ROOT_BRANCH_FAMILY = Object.freeze({
   dirColor: 0xd2d4d8,
   fileColor: 0x8a9098,
-  highlightDirColor: 0xff6150,
-  highlightFileColor: 0xff8678,
-  glowColor: 0x5f646c,
-  lineColor: 0xbbc1ca,
-  flowColor: 0xffb5ab,
+  highlightDirColor: 0xb9c9e0,
+  highlightFileColor: 0xc8d5e7,
+  glowColor: 0x4e5b6e,
+  lineColor: 0xb0bac6,
+  flowColor: 0x97abc4,
   labelColor: "#ececec",
 });
 
@@ -121,51 +107,51 @@ const BRANCH_COLOR_FAMILIES = Object.freeze([
   Object.freeze({
     dirColor: 0xcfd4db,
     fileColor: 0x88909a,
-    highlightDirColor: 0xff5f4e,
-    highlightFileColor: 0xff8477,
-    glowColor: 0x5b616a,
-    lineColor: 0xb8bec7,
-    flowColor: 0xffb7ac,
+    highlightDirColor: 0xb8c8df,
+    highlightFileColor: 0xc8d5e7,
+    glowColor: 0x4f5d6f,
+    lineColor: 0xadb8c5,
+    flowColor: 0x95aac3,
     labelColor: "#ececec",
   }),
   Object.freeze({
     dirColor: 0xd8d4cb,
     fileColor: 0x91897b,
-    highlightDirColor: 0xff6b59,
-    highlightFileColor: 0xff8f7d,
-    glowColor: 0x696354,
-    lineColor: 0xc8c1b4,
-    flowColor: 0xffc0b3,
+    highlightDirColor: 0xb4c6de,
+    highlightFileColor: 0xc2d2e6,
+    glowColor: 0x536073,
+    lineColor: 0xb3bcc8,
+    flowColor: 0x90a6c0,
     labelColor: "#f0ece1",
   }),
   Object.freeze({
     dirColor: 0xc9c9c9,
     fileColor: 0x7b7b7b,
-    highlightDirColor: 0xff5a48,
-    highlightFileColor: 0xff7f70,
-    glowColor: 0x5e5d5d,
-    lineColor: 0xb9b9b9,
-    flowColor: 0xffb1a6,
+    highlightDirColor: 0xb7c7de,
+    highlightFileColor: 0xc5d4e7,
+    glowColor: 0x4f5a6a,
+    lineColor: 0xacb7c4,
+    flowColor: 0x95aac2,
     labelColor: "#efefef",
   }),
   Object.freeze({
     dirColor: 0xd7d9d1,
     fileColor: 0x8f9487,
-    highlightDirColor: 0xff6f5f,
-    highlightFileColor: 0xff988b,
-    glowColor: 0x66695f,
-    lineColor: 0xc2c5bb,
-    flowColor: 0xffc3b9,
+    highlightDirColor: 0xb7c7de,
+    highlightFileColor: 0xc6d3e5,
+    glowColor: 0x546175,
+    lineColor: 0xb1bac6,
+    flowColor: 0x93a9c1,
     labelColor: "#eff0ea",
   }),
   Object.freeze({
     dirColor: 0xd3d0c8,
     fileColor: 0x8b8478,
-    highlightDirColor: 0xff7360,
-    highlightFileColor: 0xff9a8b,
-    glowColor: 0x686257,
-    lineColor: 0xc3bfb4,
-    flowColor: 0xffc7bc,
+    highlightDirColor: 0xb3c6dd,
+    highlightFileColor: 0xc2d2e6,
+    glowColor: 0x556176,
+    lineColor: 0xafb9c5,
+    flowColor: 0x8fa6bf,
     labelColor: "#f2eee4",
   }),
 ]);
@@ -541,15 +527,22 @@ function createTerminalScreenTexture(THREE, {
   };
 }
 
-function resolveSceldModelUrls() {
+function resolveWorldShipCockpitModelUrls() {
   const urls = [];
-  const runtimeUrl = typeof window !== "undefined"
+  const runtimeCockpitUrl = typeof window !== "undefined"
+    ? String(window.WORLD_SHIP_COCKPIT_MODEL_URL || "").trim()
+    : "";
+  if (runtimeCockpitUrl) {
+    urls.push(runtimeCockpitUrl);
+  }
+  // Keep supporting older overrides while defaulting cockpit to the Discovery model asset.
+  const legacyRuntimeUrl = typeof window !== "undefined"
     ? String(window.SCELD_MODEL_URL || "").trim()
     : "";
-  if (runtimeUrl) {
-    urls.push(runtimeUrl);
+  if (legacyRuntimeUrl && !urls.includes(legacyRuntimeUrl)) {
+    urls.push(legacyRuntimeUrl);
   }
-  for (const url of DEFAULT_SCELD_MODEL_URLS) {
+  for (const url of DEFAULT_WORLD_SHIP_COCKPIT_MODEL_URLS) {
     if (!urls.includes(url)) {
       urls.push(url);
     }
@@ -641,7 +634,13 @@ function prepareImportedCockpitModel(THREE, modelRoot) {
         material.opacity = clamp(Number(material.opacity) || 0.5, 0.08, 0.65);
         if ("depthWrite" in material) material.depthWrite = false;
         if ("side" in material) material.side = THREE.DoubleSide;
+        continue;
       }
+      // Cockpit view needs interior-facing surfaces to be visible from inside.
+      material.transparent = true;
+      material.opacity = clamp(Number(material.opacity) || 0.42, 0.22, 0.62);
+      if ("depthWrite" in material) material.depthWrite = false;
+      if ("side" in material) material.side = THREE.DoubleSide;
     }
   });
 }
@@ -677,17 +676,42 @@ function normalizeImportedCockpitModel(THREE, modelRoot) {
 
   const size = new THREE.Vector3();
   const center = new THREE.Vector3();
+  const cockpitCenter = new THREE.Vector3();
+  const cockpitForwardOffset = WORLD_SHIP_COCKPIT_TARGET_LONGEST_DIMENSION
+    * WORLD_SHIP_COCKPIT_FORWARD_OFFSET_RATIO;
+  const cockpitVerticalOffset = WORLD_SHIP_COCKPIT_TARGET_LONGEST_DIMENSION
+    * WORLD_SHIP_COCKPIT_VERTICAL_OFFSET_RATIO;
   bounds.getSize(size);
   bounds.getCenter(center);
   const longestDimension = Math.max(size.x, size.y, size.z);
   if (Number.isFinite(longestDimension) && longestDimension > 1e-6) {
-    modelRoot.scale.multiplyScalar(SCELD_MODEL_TARGET_LONGEST_DIMENSION / longestDimension);
+    modelRoot.scale.multiplyScalar(WORLD_SHIP_COCKPIT_TARGET_LONGEST_DIMENSION / longestDimension);
   }
 
   bounds.setFromObject(modelRoot);
   bounds.getSize(size);
   bounds.getCenter(center);
   modelRoot.position.sub(center);
+  modelRoot.updateMatrixWorld(true);
+
+  const cockpitAnchor = resolveWorldShipCockpitAnchor(modelRoot);
+  if (
+    cockpitAnchor
+    && getObjectLocalBoundsCenter(THREE, modelRoot, cockpitAnchor, cockpitCenter)
+    && Number.isFinite(cockpitCenter.z)
+  ) {
+    if (cockpitCenter.z > 0) {
+      modelRoot.rotation.y += Math.PI;
+      modelRoot.updateMatrixWorld(true);
+      getObjectLocalBoundsCenter(THREE, modelRoot, cockpitAnchor, cockpitCenter);
+    }
+
+    modelRoot.position.sub(cockpitCenter);
+    modelRoot.position.y -= cockpitVerticalOffset;
+    modelRoot.position.z -= cockpitForwardOffset;
+    return;
+  }
+
   modelRoot.position.y -= size.y * 0.07;
   modelRoot.position.z -= size.z * 0.24;
 }
@@ -748,7 +772,7 @@ function loadImportedCockpitModel({
     return () => {};
   }
 
-  const candidateUrls = resolveSceldModelUrls();
+  const candidateUrls = resolveWorldShipCockpitModelUrls();
   if (!candidateUrls.length) {
     return () => {};
   }
@@ -772,7 +796,12 @@ function loadImportedCockpitModel({
   }
 
   function tryLoad(index) {
-    if (cancelled || index >= candidateUrls.length) return;
+    if (cancelled) return;
+    if (index >= candidateUrls.length) {
+      cockpitRig.userData.modelSource = "none";
+      cockpitRig.userData.modelStatus = "failed";
+      return;
+    }
     const url = candidateUrls[index];
     loader.load(
       url,
@@ -862,103 +891,9 @@ function loadWorldShipModel({
 
 function createCockpitRig(THREE) {
   const cockpit = new THREE.Group();
-  cockpit.name = "world-sceld-cockpit-rig";
-  cockpit.userData.modelSource = "procedural";
-  cockpit.userData.modelStatus = "fallback";
-
-  const hullMat = new THREE.MeshBasicMaterial({
-    color: 0x101216,
-    transparent: true,
-    opacity: 0.98,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  const trimMat = new THREE.MeshBasicMaterial({
-    color: 0x8e96a3,
-    transparent: true,
-    opacity: 0.9,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  const accentMat = new THREE.MeshBasicMaterial({
-    color: 0x4f5f79,
-    transparent: true,
-    opacity: 0.82,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  const glassMat = new THREE.MeshBasicMaterial({
-    color: 0x6f8ec0,
-    transparent: true,
-    opacity: 0.11,
-    depthWrite: false,
-    toneMapped: false,
-  });
-
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.24, 3.4), hullMat);
-  deck.position.set(0, -1.18, -0.7);
-  cockpit.add(deck);
-
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.18, 2.9), hullMat);
-  roof.position.set(0, 1.02, -0.72);
-  cockpit.add(roof);
-
-  const leftHull = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.86, 3.0), hullMat);
-  leftHull.position.set(-1.56, -0.03, -0.7);
-  cockpit.add(leftHull);
-
-  const rightHull = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.86, 3.0), hullMat);
-  rightHull.position.set(1.56, -0.03, -0.7);
-  cockpit.add(rightHull);
-
-  const rearBulkhead = new THREE.Mesh(new THREE.BoxGeometry(2.84, 1.9, 0.18), hullMat);
-  rearBulkhead.position.set(0, -0.03, 0.82);
-  cockpit.add(rearBulkhead);
-
-  const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.62, 0.34, 0.85), hullMat);
-  dashboard.position.set(0, -0.96, -1.2);
-  cockpit.add(dashboard);
-
-  const topFrame = new THREE.Mesh(new THREE.BoxGeometry(2.34, 0.1, 0.14), hullMat);
-  topFrame.position.set(0, 0.78, -1.1);
-  cockpit.add(topFrame);
-
-  const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.56, 0.14), hullMat);
-  leftFrame.position.set(-1.16, -0.03, -1.08);
-  cockpit.add(leftFrame);
-
-  const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.56, 0.14), hullMat);
-  rightFrame.position.set(1.16, -0.03, -1.08);
-  cockpit.add(rightFrame);
-
-  const leftSupport = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.26, 0.08), trimMat);
-  leftSupport.position.set(-0.68, -0.23, -1.04);
-  leftSupport.rotation.z = 0.2;
-  cockpit.add(leftSupport);
-
-  const rightSupport = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.26, 0.08), trimMat);
-  rightSupport.position.set(0.68, -0.23, -1.04);
-  rightSupport.rotation.z = -0.2;
-  cockpit.add(rightSupport);
-
-  const frontPlate = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.12, 0.12), accentMat);
-  frontPlate.position.set(0, -0.48, -1.12);
-  cockpit.add(frontPlate);
-
-  const canopyGlass = new THREE.Mesh(new THREE.PlaneGeometry(2.02, 1.24), glassMat);
-  canopyGlass.position.set(0, 0.02, -1.12);
-  cockpit.add(canopyGlass);
-
-  const leftWindow = new THREE.Mesh(new THREE.PlaneGeometry(1.52, 0.9), glassMat);
-  leftWindow.position.set(-1.02, 0, -0.48);
-  leftWindow.rotation.y = 0.63;
-  cockpit.add(leftWindow);
-
-  const rightWindow = new THREE.Mesh(new THREE.PlaneGeometry(1.52, 0.9), glassMat);
-  rightWindow.position.set(1.02, 0, -0.48);
-  rightWindow.rotation.y = -0.63;
-  cockpit.add(rightWindow);
-
+  cockpit.name = "world-discovery-cockpit-rig";
+  cockpit.userData.modelSource = "none";
+  cockpit.userData.modelStatus = "awaiting-import";
   return cockpit;
 }
 
@@ -1053,8 +988,8 @@ function createEnvironment(
 
   const nebulaTextureA = createNebulaSpriteTexture(
     THREE,
-    "rgba(162, 34, 24, 0.24)",
-    "rgba(42, 10, 8, 0)",
+    "rgba(82, 118, 168, 0.14)",
+    "rgba(20, 30, 48, 0)",
   );
   const nebulaTextureB = createNebulaSpriteTexture(
     THREE,
@@ -1111,9 +1046,9 @@ function createEnvironment(
   const monitorScreen = new THREE.Mesh(
     new THREE.PlaneGeometry(5.78, 2.98),
     new THREE.MeshBasicMaterial({
-      color: 0x1f0604,
+      color: 0x09121d,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.86,
     }),
   );
   monitorScreen.position.set(0, 0.56, -5.78);
@@ -1136,8 +1071,8 @@ function createEnvironment(
       color: 0x0a0a0b,
       metalness: 0.46,
       roughness: 0.4,
-      emissive: 0x2c110f,
-      emissiveIntensity: 0.22,
+      emissive: 0x131f2f,
+      emissiveIntensity: 0.14,
     }),
   );
   rightPanel.position.set(3.82, 3.22, -5.88);
@@ -1145,7 +1080,7 @@ function createEnvironment(
   rightPanel.rotation.x = -0.04;
   root.add(rightPanel);
 
-  const rightPanelGlow = new THREE.PointLight(0xff5d49, 0.58, 9, 2);
+  const rightPanelGlow = new THREE.PointLight(0x8ba8d2, 0.34, 9, 2);
   rightPanelGlow.position.set(3.92, 3.52, -5.36);
   root.add(rightPanelGlow);
   animatedLightRefs.push(rightPanelGlow);
@@ -1276,8 +1211,8 @@ function createDirectoryGraph(THREE, directoryGroup) {
     const isDir = entry.type === "dir";
     const baseColor = isDir ? family.dirColor : family.fileColor;
     const highlightColor = isDir ? family.highlightDirColor : family.highlightFileColor;
-    const baseEmissive = isDir ? 0.18 : 0.12;
-    const highlightEmissive = isDir ? 0.58 : 0.46;
+    const baseEmissive = isDir ? 0.08 : 0.05;
+    const highlightEmissive = isDir ? 0.2 : 0.15;
 
     const material = new THREE.MeshStandardMaterial({
       color: baseColor,
@@ -1311,8 +1246,8 @@ function createDirectoryGraph(THREE, directoryGroup) {
     const auraMaterial = new THREE.MeshBasicMaterial({
       color: family.glowColor,
       transparent: true,
-      opacity: isDir ? 0.03 : 0.02,
-      blending: THREE.AdditiveBlending,
+      opacity: isDir ? 0.012 : 0.008,
+      blending: THREE.NormalBlending,
       depthWrite: false,
     });
     materials.push(auraMaterial);
@@ -1321,7 +1256,7 @@ function createDirectoryGraph(THREE, directoryGroup) {
     aura.scale.setScalar(isDir ? 0.84 : 0.68);
     aura.userData.baseScale = aura.scale.x;
     aura.userData.baseOpacity = auraMaterial.opacity;
-    aura.userData.highlightOpacity = isDir ? 0.09 : 0.07;
+    aura.userData.highlightOpacity = isDir ? 0.03 : 0.022;
     mesh.add(aura);
     mesh.userData.aura = aura;
     directoryGroup.add(mesh);
@@ -1379,8 +1314,8 @@ function createDirectoryGraph(THREE, directoryGroup) {
     const flowMaterial = new THREE.MeshBasicMaterial({
       color: family.flowColor,
       transparent: true,
-      opacity: 0.52,
-      blending: THREE.AdditiveBlending,
+      opacity: 0.18,
+      blending: THREE.NormalBlending,
       depthWrite: false,
     });
     materials.push(flowMaterial);
@@ -1400,7 +1335,7 @@ function createDirectoryGraph(THREE, directoryGroup) {
       flowPosition,
       speed: 0.1 + Math.random() * 0.24,
       phase,
-      baseOpacity: 0.2 + Math.random() * 0.12,
+      baseOpacity: 0.1 + Math.random() * 0.08,
       sourceId: parentEntry.id,
       targetId: entry.id,
     });
@@ -1426,18 +1361,12 @@ export function createDesktopWorld({
   camera,
   canvas,
   onToolAction,
-  onDebugStatus,
 } = {}) {
-  const CAMERA_TRAVEL_DURATION_SECONDS = 3 * 60 * 60;
   const WORLD_CAMERA_FOV_DEGREES = 38;
-  const CAMERA_ROUTE_STANDOFF_RATIO_EARTH = 0.02;
-  const CAMERA_ROUTE_STANDOFF_RATIO_JUPITER = 0.08;
-  const CAMERA_ROUTE_SIDE_RATIO_EARTH = 0.015;
-  const CAMERA_ROUTE_SIDE_RATIO_JUPITER = 0.05;
-  const CAMERA_ROUTE_ALTITUDE_RATIO = 0.003;
-  const CAMERA_ROUTE_TARGET_RATIO = 0.01;
-  const CAMERA_ROUTE_TRANSFER_LINE_OPACITY = 0.52;
-  const CAMERA_ROUTE_MARKER_RADIUS = 0.026;
+  const WORLD_ENTRY_CAMERA_POSITION = Object.freeze([0.079, 9.166, 10.487]);
+  const WORLD_ENTRY_CAMERA_TARGET = Object.freeze([0.047, 5.996, 4.246]);
+  const WORLD_ENTRY_MIN_DISTANCE = 2.5;
+  const WORLD_ENTRY_MAX_DISTANCE = 12;
 
   const root = new THREE.Group();
   root.visible = false;
@@ -1480,7 +1409,7 @@ export function createDesktopWorld({
   const worldLights = {
     ambient: new THREE.AmbientLight(0x171717, 0.44),
     key: new THREE.DirectionalLight(0xf2efe8, 1.06),
-    fill: new THREE.DirectionalLight(0x5b221c, 0.36),
+    fill: new THREE.DirectionalLight(0x2f3b4e, 0.26),
   };
   worldLights.key.position.set(2.2, 5.2, 1.8);
   worldLights.key.castShadow = true;
@@ -1508,90 +1437,8 @@ export function createDesktopWorld({
   let attachedAvatarId = "";
   let elapsed = 0;
   let worldOrbit = null;
-  let xrPresentationActive = false;
-  const cameraTravel = {
-    active: false,
-    elapsed: 0,
-    progress: 0,
-    duration: CAMERA_TRAVEL_DURATION_SECONDS,
-    startPos: new THREE.Vector3(),
-    endPos: new THREE.Vector3(),
-    startTarget: new THREE.Vector3(),
-    endTarget: new THREE.Vector3(),
-  };
-  const cameraPosTmp = new THREE.Vector3();
-  const cameraTargetTmp = new THREE.Vector3();
-  const worldAnchorEarth = new THREE.Vector3();
-  const worldAnchorJupiter = new THREE.Vector3();
-  const cameraWorldPosition = new THREE.Vector3();
-  const worldShipPosition = new THREE.Vector3();
-  const worldShipForward = new THREE.Vector3();
-  const worldShipSide = new THREE.Vector3();
-  const worldShipLookTarget = new THREE.Vector3();
-  const worldShipCameraWorldPosition = new THREE.Vector3();
-  const worldShipCameraWorldTarget = new THREE.Vector3();
-  const worldShipCameraLocalPositionDesktop = new THREE.Vector3(...WORLD_SHIP_CAMERA_LOCAL_POSITION_DESKTOP);
-  const worldShipCameraLocalTargetDesktop = new THREE.Vector3(...WORLD_SHIP_CAMERA_LOCAL_TARGET_DESKTOP);
-  const worldShipCameraLocalPositionXr = new THREE.Vector3(...WORLD_SHIP_CAMERA_LOCAL_POSITION_XR);
-  const worldShipCameraLocalTargetXr = new THREE.Vector3(...WORLD_SHIP_CAMERA_LOCAL_TARGET_XR);
-  const travelForward = new THREE.Vector3();
-  const travelSide = new THREE.Vector3();
-  const worldUp = new THREE.Vector3(0, 1, 0);
   const defaultCameraFov = Number(camera?.fov) > 0 ? Number(camera.fov) : 45;
-  const transferMarkerPosition = new THREE.Vector3();
-  const transferPathGeometry = new THREE.BufferGeometry();
-  const transferPathPoints = new Float32Array(6);
-  transferPathGeometry.setAttribute("position", new THREE.BufferAttribute(transferPathPoints, 3));
-  const transferPathMaterial = new THREE.LineBasicMaterial({
-    color: 0xff8f7a,
-    transparent: true,
-    opacity: CAMERA_ROUTE_TRANSFER_LINE_OPACITY,
-    toneMapped: false,
-    depthWrite: false,
-  });
-  const transferPathLine = new THREE.Line(transferPathGeometry, transferPathMaterial);
-  transferPathLine.name = "earth-jupiter-transfer-line";
-  transferPathLine.visible = false;
-  root.add(transferPathLine);
-
-  const transferMarker = new THREE.Mesh(
-    new THREE.SphereGeometry(CAMERA_ROUTE_MARKER_RADIUS, 12, 10),
-    new THREE.MeshBasicMaterial({
-      color: 0xffb39e,
-      transparent: true,
-      opacity: 0.86,
-      toneMapped: false,
-      depthWrite: false,
-    }),
-  );
-  transferMarker.name = "earth-jupiter-transfer-marker";
-  transferMarker.visible = false;
-  root.add(transferMarker);
-
-  function emitDebugStatus(message, { level = "info", data = null } = {}) {
-    const text = String(message || "").trim();
-    if (!text) return;
-
-    if (typeof onDebugStatus === "function") {
-      onDebugStatus({
-        level,
-        message: text,
-        data,
-      });
-      return;
-    }
-
-    const logger = level === "error"
-      ? console.error
-      : level === "warn"
-        ? console.warn
-        : console.info;
-    if (data) {
-      logger(`[DesktopWorld] ${text}`, data);
-      return;
-    }
-    logger(`[DesktopWorld] ${text}`);
-  }
+  const defaultCameraNear = Number(camera?.near) > 0 ? Number(camera.near) : 0.1;
 
   function buildContextSet(selectedId) {
     const context = new Set();
@@ -1627,8 +1474,8 @@ export function createDesktopWorld({
 
       const aura = mesh.userData?.aura;
       if (aura?.material) {
-        const auraBase = Number(aura.userData.baseOpacity) || 0.04;
-        const auraHighlight = Number(aura.userData.highlightOpacity) || 0.14;
+        const auraBase = Number(aura.userData.baseOpacity) || 0.012;
+        const auraHighlight = Number(aura.userData.highlightOpacity) || 0.03;
         aura.material.opacity = isSelected
           ? auraHighlight
           : inContext
@@ -1648,7 +1495,7 @@ export function createDesktopWorld({
 
     for (const connection of graph.connections || []) {
       const inContext = contextSet.has(connection.sourceId) && contextSet.has(connection.targetId);
-      connection.baseOpacity = inContext ? 0.34 : 0.03;
+      connection.baseOpacity = inContext ? 0.16 : 0.01;
       connection.flow.visible = inContext;
     }
   }
@@ -1667,8 +1514,8 @@ export function createDesktopWorld({
 
     const aura = entry.mesh.userData?.aura;
     if (aura?.material) {
-      const baseOpacity = Number(aura.userData.baseOpacity) || 0.18;
-      const highlightOpacity = Number(aura.userData.highlightOpacity) || (baseOpacity + 0.12);
+      const baseOpacity = Number(aura.userData.baseOpacity) || 0.01;
+      const highlightOpacity = Number(aura.userData.highlightOpacity) || (baseOpacity + 0.016);
       aura.material.opacity = highlighted ? highlightOpacity : baseOpacity;
       aura.material.needsUpdate = true;
     }
@@ -1721,101 +1568,12 @@ export function createDesktopWorld({
     camera.updateProjectionMatrix();
   }
 
-  function updateTransferTrajectory(progress = 0) {
-    const earthAnchor = environment?.getWorldAnchor?.("earth", worldAnchorEarth);
-    const jupiterAnchor = environment?.getWorldAnchor?.("jupiter", worldAnchorJupiter);
-    if (!earthAnchor || !jupiterAnchor) {
-      transferPathLine.visible = false;
-      transferMarker.visible = false;
-      return;
-    }
-
-    transferPathPoints[0] = earthAnchor.x;
-    transferPathPoints[1] = earthAnchor.y;
-    transferPathPoints[2] = earthAnchor.z;
-    transferPathPoints[3] = jupiterAnchor.x;
-    transferPathPoints[4] = jupiterAnchor.y;
-    transferPathPoints[5] = jupiterAnchor.z;
-    transferPathGeometry.attributes.position.needsUpdate = true;
-    transferPathGeometry.computeBoundingSphere();
-
-    transferMarkerPosition.lerpVectors(
-      earthAnchor,
-      jupiterAnchor,
-      clamp(progress, 0, 1),
-    );
-    transferMarker.position.copy(transferMarkerPosition);
-
-    transferPathLine.visible = active;
-    transferMarker.visible = active;
-  }
-
-  function updateWorldShipPlacement() {
-    const earthAnchor = environment?.getWorldAnchor?.("earth", worldAnchorEarth);
-    const jupiterAnchor = environment?.getWorldAnchor?.("jupiter", worldAnchorJupiter);
-    if (!earthAnchor || !jupiterAnchor) {
-      worldShipRig.visible = false;
-      return;
-    }
-
-    const routeDistance = Math.max(1e-5, earthAnchor.distanceTo(jupiterAnchor));
-    const shipStandoff = Math.max(routeDistance * WORLD_SHIP_EARTH_STANDOFF_RATIO, WORLD_SHIP_MIN_STANDOFF);
-    const shipSideOffset = Math.max(routeDistance * WORLD_SHIP_EARTH_SIDE_RATIO, WORLD_SHIP_MIN_SIDE);
-    const shipAltitudeOffset = Math.max(routeDistance * WORLD_SHIP_EARTH_ALTITUDE_RATIO, WORLD_SHIP_MIN_ALTITUDE);
-
-    worldShipForward.copy(jupiterAnchor).sub(earthAnchor);
-    worldShipForward.y = 0;
-    if (worldShipForward.lengthSq() < 1e-6) {
-      worldShipForward.set(0, 0, -1);
-    } else {
-      worldShipForward.normalize();
-    }
-
-    worldShipSide.crossVectors(worldShipForward, worldUp);
-    if (worldShipSide.lengthSq() < 1e-6) {
-      worldShipSide.set(1, 0, 0);
-    } else {
-      worldShipSide.normalize();
-    }
-
-    worldShipPosition.copy(earthAnchor);
-    worldShipPosition.addScaledVector(worldShipForward, -shipStandoff);
-    worldShipPosition.addScaledVector(worldShipSide, shipSideOffset);
-    worldShipPosition.y += shipAltitudeOffset;
-    worldShipRig.position.copy(worldShipPosition);
-
-    worldShipLookTarget.copy(worldShipPosition).addScaledVector(worldShipForward, 1);
-    worldShipLookTarget.y = worldShipPosition.y;
-    worldShipRig.lookAt(worldShipLookTarget);
-    worldShipRig.visible = active && !xrPresentationActive;
-  }
-
-  function getWorldShipCameraPose(positionTarget = null, targetTarget = null, { xr = false } = {}) {
-    if (!active) return false;
-    const localPosition = xr ? worldShipCameraLocalPositionXr : worldShipCameraLocalPositionDesktop;
-    const localTarget = xr ? worldShipCameraLocalTargetXr : worldShipCameraLocalTargetDesktop;
-    worldShipRig.updateMatrixWorld(true);
-    worldShipCameraWorldPosition.copy(localPosition).applyMatrix4(worldShipRig.matrixWorld);
-    worldShipCameraWorldTarget.copy(localTarget).applyMatrix4(worldShipRig.matrixWorld);
-    if (positionTarget) {
-      positionTarget.copy(worldShipCameraWorldPosition);
-    }
-    if (targetTarget) {
-      targetTarget.copy(worldShipCameraWorldTarget);
-    }
-    return true;
-  }
-
-  function lockCameraToWorldShip() {
-    const resolved = getWorldShipCameraPose(cameraPosTmp, cameraTargetTmp);
-    if (!resolved) return false;
-    camera.position.copy(cameraPosTmp);
-    camera.lookAt(cameraTargetTmp);
-    if (worldOrbit) {
-      worldOrbit.target.copy(cameraTargetTmp);
-      worldOrbit.update();
-    }
-    return true;
+  function setWorldCameraNear(nearDistance) {
+    const nextNear = Number(nearDistance);
+    if (!Number.isFinite(nextNear) || nextNear <= 1e-6) return;
+    if (Math.abs((Number(camera?.near) || 0) - nextNear) <= 1e-6) return;
+    camera.near = nextNear;
+    camera.updateProjectionMatrix();
   }
 
   function setStatusPanels({ left = null, right = null } = {}) {
@@ -1826,28 +1584,19 @@ export function createDesktopWorld({
   function setVisible(nextVisible) {
     active = Boolean(nextVisible);
     root.visible = active;
-    worldShipRig.visible = active && !xrPresentationActive;
-    cockpitRig.visible = active;
+    worldShipRig.visible = false;
+    cockpitRig.visible = false;
     setWorldCameraFov(active ? WORLD_CAMERA_FOV_DEGREES : defaultCameraFov);
+    setWorldCameraNear(active ? WORLD_CAMERA_NEAR_ACTIVE : defaultCameraNear);
     if (worldOrbit) {
       worldOrbit.enableRotate = !active;
       worldOrbit.enablePan = !active;
       worldOrbit.enableZoom = !active;
     }
-    if (!active) {
-      cameraTravel.active = false;
-      cameraTravel.progress = 0;
-      transferPathLine.visible = false;
-      transferMarker.visible = false;
-      return;
-    }
-    updateTransferTrajectory(cameraTravel.progress);
-    updateWorldShipPlacement();
   }
 
-  function setXrPresentationActive(nextActive) {
-    xrPresentationActive = Boolean(nextActive);
-    worldShipRig.visible = active && !xrPresentationActive;
+  function setXrPresentationActive() {
+    worldShipRig.visible = false;
   }
 
   function attachAvatar(avatarId, avatarGroup, { yOffset = 0 } = {}) {
@@ -1936,180 +1685,27 @@ export function createDesktopWorld({
     return pickWorldNodeFromHits(hits);
   }
 
-  function startEarthToJupiterCameraTravel() {
-    root.updateMatrixWorld(true);
-    const earthAnchor = environment?.getWorldAnchor?.("earth", worldAnchorEarth);
-    const jupiterAnchor = environment?.getWorldAnchor?.("jupiter", worldAnchorJupiter);
-    if (!earthAnchor || !jupiterAnchor) {
-      emitDebugStatus(
-        "Could not resolve Earth/Jupiter anchors for transfer camera; using fallback view.",
-        {
-          level: "warn",
-          data: {
-            hasEarthAnchor: Boolean(earthAnchor),
-            hasJupiterAnchor: Boolean(jupiterAnchor),
-            worldScaleMode: environment?.getScaleMode?.() || "unknown",
-          },
-        },
-      );
-      return false;
-    }
-    const routeDistance = Math.max(1e-5, earthAnchor.distanceTo(jupiterAnchor));
-    const earthRadius = Number(environment?.getWorldBodyRadius?.("earth")) || 0;
-    const jupiterRadius = Number(environment?.getWorldBodyRadius?.("jupiter")) || 0;
-    const earthStandoff = Math.max(
-      routeDistance * CAMERA_ROUTE_STANDOFF_RATIO_EARTH,
-      earthRadius * 24,
-      0.03,
-    );
-    const jupiterStandoff = Math.max(
-      routeDistance * CAMERA_ROUTE_STANDOFF_RATIO_JUPITER,
-      jupiterRadius * 18,
-      0.08,
-    );
-    const earthSideStandoff = Math.max(
-      routeDistance * CAMERA_ROUTE_SIDE_RATIO_EARTH,
-      earthRadius * 9,
-      0.015,
-    );
-    const jupiterSideStandoff = Math.max(
-      routeDistance * CAMERA_ROUTE_SIDE_RATIO_JUPITER,
-      jupiterRadius * 8,
-      0.05,
-    );
-    const lowAltitudeOffset = Math.max(
-      routeDistance * CAMERA_ROUTE_ALTITUDE_RATIO,
-      earthRadius * 3.5,
-      0.01,
-    );
-    const targetForwardOffset = Math.max(
-      routeDistance * CAMERA_ROUTE_TARGET_RATIO,
-      earthRadius * 12,
-      0.02,
-    );
-
-    travelForward.copy(jupiterAnchor).sub(earthAnchor);
-    travelForward.y = 0;
-    if (travelForward.lengthSq() < 1e-6) {
-      travelForward.set(0, 0, -1);
-    } else {
-      travelForward.normalize();
-    }
-
-    travelSide.crossVectors(travelForward, worldUp);
-    if (travelSide.lengthSq() < 1e-6) {
-      travelSide.set(1, 0, 0);
-    } else {
-      travelSide.normalize();
-    }
-
-    cameraTravel.startTarget.copy(earthAnchor).addScaledVector(travelForward, targetForwardOffset);
-    cameraTravel.startTarget.y += lowAltitudeOffset;
-    cameraTravel.endTarget.copy(jupiterAnchor).addScaledVector(travelForward, targetForwardOffset * 0.8);
-    cameraTravel.endTarget.y += lowAltitudeOffset * 0.9;
-
-    cameraTravel.startPos.copy(earthAnchor);
-    cameraTravel.startPos.addScaledVector(travelForward, -earthStandoff);
-    cameraTravel.startPos.addScaledVector(travelSide, -earthSideStandoff);
-    cameraTravel.startPos.y += lowAltitudeOffset;
-
-    cameraTravel.endPos.copy(jupiterAnchor);
-    cameraTravel.endPos.addScaledVector(travelForward, -jupiterStandoff);
-    cameraTravel.endPos.addScaledVector(travelSide, jupiterSideStandoff * 0.8);
-    cameraTravel.endPos.y += lowAltitudeOffset * 0.8;
-
-    cameraTravel.elapsed = 0;
-    cameraTravel.progress = 0;
-    cameraTravel.active = false;
-    updateTransferTrajectory(0);
-    updateWorldShipPlacement();
-
-    const lockedToShip = lockCameraToWorldShip();
-    if (!lockedToShip) {
-      camera.position.copy(cameraTravel.startPos);
-      if (worldOrbit) {
-        worldOrbit.target.copy(cameraTravel.startTarget);
-        worldOrbit.update();
-      }
-      camera.lookAt(cameraTravel.startTarget);
-    }
-    camera.getWorldPosition(cameraWorldPosition);
-    emitDebugStatus("Earth/Jupiter transfer camera initialized.", {
-      level: "info",
-      data: {
-        routeDistance,
-        cameraLockedToShip: lockedToShip,
-        startPosLocal: cameraTravel.startPos.toArray(),
-        cameraWorldPos: cameraWorldPosition.toArray(),
-        cameraParentPos: camera.parent?.position?.toArray?.() || null,
-        startTarget: cameraTravel.startTarget.toArray(),
-        endPos: cameraTravel.endPos.toArray(),
-        endTarget: cameraTravel.endTarget.toArray(),
-      },
-    });
-    return true;
-  }
-
   function focusOnWorldCamera(orbit) {
     worldOrbit = orbit || worldOrbit;
     if (worldOrbit) {
-      // World transfer starts very close to Earth; prevent OrbitControls from pushing camera backward.
-      worldOrbit.minDistance = 0.001;
-      worldOrbit.maxDistance = 45;
+      worldOrbit.minDistance = WORLD_ENTRY_MIN_DISTANCE;
+      worldOrbit.maxDistance = WORLD_ENTRY_MAX_DISTANCE;
     }
 
-    const startedTravel = startEarthToJupiterCameraTravel();
-    if (startedTravel) return;
-
-    emitDebugStatus("Falling back to static deck camera placement.", {
-      level: "warn",
-      data: {
-        fallbackCameraPosition: [0.58, 1.78, 9.6],
-        fallbackOrbitTarget: [0, -0.15, -3.05],
-      },
-    });
-    camera.position.set(0.58, 1.78, 9.6);
+    camera.position.set(...WORLD_ENTRY_CAMERA_POSITION);
+    camera.lookAt(...WORLD_ENTRY_CAMERA_TARGET);
     if (worldOrbit) {
-      worldOrbit.target.set(0, -0.15, -3.05);
-      worldOrbit.minDistance = 5;
-      worldOrbit.maxDistance = 19;
+      worldOrbit.target.set(...WORLD_ENTRY_CAMERA_TARGET);
       worldOrbit.update();
     }
-    updateTransferTrajectory(0);
+    worldShipRig.visible = false;
+    cockpitRig.visible = false;
   }
 
   function update(dt = 0.016, viewCamera = camera, viewportHeightPx = 0) {
     if (!active) return;
     const clampedDt = Math.min(0.08, Math.max(0.001, dt));
     elapsed += clampedDt;
-
-    if (cameraTravel.active) {
-      cameraTravel.elapsed += clampedDt;
-      const normalized = clamp(cameraTravel.elapsed / cameraTravel.duration, 0, 1);
-      const eased = normalized * normalized * (3 - 2 * normalized);
-      const arcLift = Math.sin(normalized * Math.PI) * 0.05;
-      cameraTravel.progress = normalized;
-
-      cameraPosTmp.lerpVectors(cameraTravel.startPos, cameraTravel.endPos, eased);
-      cameraPosTmp.y += arcLift;
-      cameraTargetTmp.lerpVectors(cameraTravel.startTarget, cameraTravel.endTarget, eased);
-
-      camera.position.copy(cameraPosTmp);
-      if (worldOrbit) {
-        worldOrbit.target.copy(cameraTargetTmp);
-      }
-      camera.lookAt(cameraTargetTmp);
-
-      if (normalized >= 1) {
-        cameraTravel.active = false;
-      }
-    }
-
-    updateTransferTrajectory(
-      cameraTravel.active
-        ? cameraTravel.progress
-        : (elapsed * 0.05) % 1,
-    );
 
     for (const animated of animatedObjects) {
       if (animated.kind === "customUpdate" && typeof animated.update === "function") {
@@ -2154,10 +1750,6 @@ export function createDesktopWorld({
       }
 
     }
-
-    updateWorldShipPlacement();
-    lockCameraToWorldShip();
-
     for (const entry of graph.entries) {
       const mesh = entry.mesh;
       if (!mesh) continue;
@@ -2189,8 +1781,8 @@ export function createDesktopWorld({
       connection.flow.position.copy(connection.flowPosition);
 
       const wave = Math.sin(elapsed * 2 + connection.phase * Math.PI * 2);
-      connection.lineMaterial.opacity = clamp(connection.baseOpacity + wave * 0.08, 0.04, 0.58);
-      connection.flowMaterial.opacity = clamp(0.45 + wave * 0.15, 0.08, 0.72);
+      connection.lineMaterial.opacity = clamp(connection.baseOpacity + wave * 0.05, 0.02, 0.26);
+      connection.flowMaterial.opacity = clamp(0.11 + wave * 0.04, 0.02, 0.2);
       connection.lineMaterial.needsUpdate = true;
       connection.flowMaterial.needsUpdate = true;
     }
@@ -2198,8 +1790,8 @@ export function createDesktopWorld({
     const selected = getSelectedNode();
     if (selected?.mesh?.material) {
       const baseIntensity = Number(selected.mesh.userData.highlightEmissive)
-        || (selected.type === "dir" ? 0.96 : 0.8);
-      selected.mesh.material.emissiveIntensity = baseIntensity + Math.sin(elapsed * 2.9) * 0.1;
+        || (selected.type === "dir" ? 0.22 : 0.18);
+      selected.mesh.material.emissiveIntensity = baseIntensity + Math.sin(elapsed * 2.9) * 0.04;
     }
 
     if (animatedLights.length > 0) {
@@ -2225,10 +1817,6 @@ export function createDesktopWorld({
     if (worldShipRig.parent === root) {
       root.remove(worldShipRig);
     }
-    transferPathGeometry.dispose();
-    transferPathMaterial.dispose();
-    transferMarker.geometry.dispose();
-    transferMarker.material.dispose();
     safeDisposeObject3D(worldShipRig);
     safeDisposeObject3D(root);
     for (const texture of disposableTextures) {
@@ -2261,8 +1849,6 @@ export function createDesktopWorld({
     detachAvatar,
     pickWorldNode,
     pickWorldNodeFromRay,
-    getWorldShipCameraPose,
-    isCameraLockedToShip: () => active,
     setXrPresentationActive,
     focusOnWorldCamera,
     update,
